@@ -1,0 +1,11 @@
+# Текст — с LF в репозитории (Lua, Python, документация); бинарные ассеты GMod не трогать
+* text=auto eol=lf
+*.vtf binary
+*.mdl binary
+*.vvd binary
+*.vtx binary
+*.phy binary
+*.png binary
+*.jpg binary
+*.gma binary
+*.wav binary

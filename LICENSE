@@ -1,0 +1,19 @@
+Aether - Volumetric Smoke & Gas Dynamics
+Copyright (c) 2026 Aether contributors
+
+This work (Lua code, generated models, textures, icons, tools and documentation)
+is licensed under the Creative Commons Attribution-NonCommercial-ShareAlike 4.0
+International License (CC BY-NC-SA 4.0).
+
+Human-readable summary: https://creativecommons.org/licenses/by-nc-sa/4.0/
+Legal code (this is what applies): https://creativecommons.org/licenses/by-nc-sa/4.0/legalcode
+
+In short:
+  - You may use, copy, change and share this work for non-commercial purposes.
+  - You must give credit to the original authors and link to the original.
+  - If you share a changed version, you must share it under this same license.
+  - You may not sell this work or use it primarily for commercial advantage
+    or money.
+
+Other addons may call the public API (AetherGas.API) and hooks from their own
+code without that code becoming subject to this license.

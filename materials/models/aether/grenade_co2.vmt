@@ -1,0 +1,6 @@
+"VertexLitGeneric"
+{
+	"$basetexture" "models/aether/grenade_co2"
+	"$envmap" "env_cubemap"
+	"$envmaptint" "[.06 .06 .06]"
+}

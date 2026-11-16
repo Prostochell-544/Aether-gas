@@ -1,0 +1,7 @@
+"UnlitGeneric"
+{
+	"$basetexture" "aether/killicon_fire"
+	"$vertexcolor" "1"
+	"$vertexalpha" "1"
+	"$translucent" "1"
+}

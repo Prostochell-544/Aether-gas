@@ -1,0 +1,24 @@
+{
+	"title": "Aether: Volumetric Smoke & Gas Dynamics",
+	"description": "Volumetric gas simulation in pure GLua: 18 gases plus custom ones that flow through doors, windows and vents, with grenades, cylinders, gas masks, analyzer, ducts and a gas sprayer.",
+	"type": "servercontent",
+	"tags": [
+		"fun",
+		"realism"
+	],
+	"ignore": [
+		"*.md",
+		"*.py",
+		"*.yml",
+		"LICENSE",
+		".git*",
+		".github/*",
+		"docs/*",
+		"tools/*",
+		"build/*",
+		"materialsrc/*",
+		"*.psd",
+		"*.bak",
+		".vscode/*"
+	]
+}
