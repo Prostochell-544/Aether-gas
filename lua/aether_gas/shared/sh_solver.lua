@@ -14,8 +14,13 @@
       вверх  : поток·clamp(1+2·buoy) + BUOY_RATE·buoy·c·dt   (лёгкий/горячий газ всплывает)
       вниз   : поток·clamp(1−2·buoy) + BUOY_RATE·(−buoy)·c·dt (тяжёлый стекает и не лезет вверх)
       адвекция: max(0, v·n)·dt/size·c                    — импульс взрывов и ветер (снаружи)
+      утечка : COH_LEAK·dt·(c − c_n)                     — край облака со временем расплывается в дымку
+      давление: избыток e = max(0, c − 1) толкает газ PRESS_RATE·dt·(e − e_n) по каждой открытой грани
+                и разгоняет ячейку PRESS_ACCEL·dt·(e − e_n) вдоль грани — полная комната выдавливает газ
+                струёй в дверь; чужой газ у грани получает тот же толчок (вытеснение)
       небо   : поток в грань со skybox просто уходит (сток в атмосферу)
-    Затем: распад decay (+ быстрее на улице), конденсация у стен (пар), остывание, затухание импульса.
+    Затем: распад decay (в помещении × indoorDecay, на улице + OUTDOOR_DECAY), конденсация у стен (пар),
+    остывание, затухание импульса. Источник, упёршийся в MAX_CONC, переливает излишек в соседние ячейки.
 
     Обход in-place (Гаусс–Зейдель) с чередованием направления от шага к шагу — без второго буфера и без
     рассинхрона между чанками, обновляемыми в разные тики. Порядковая асимметрия гасится чередованием.
@@ -51,7 +56,7 @@ local VelX, VelY, VelZ = Spatial.VelX, Spatial.VelY, Spatial.VelZ
 local chunkSlot, slotKey, slotDirty, slotCount = Pool.chunkSlot, Pool.slotKey, Pool.slotDirty, Pool.slotCount
 
 local Pdens, Pdiff, Pspread, Pdecay, Pcoh = P.Density, P.Diffusion, P.Spread, P.Decay, P.Cohesion
-local Pcool, Pcond, PcondT = P.Cooling, P.CondenseRate, P.CondenseTemp
+local Pcool, Pcond, PcondT, PinDecay = P.Cooling, P.CondenseRate, P.CondenseTemp, P.IndoorDecay
 local PflameMin, PflameMax, Pblast = P.FlameMin, P.FlameMax, P.BlastDamage
 
 local RequestProbe = Spatial.RequestProbe
@@ -65,7 +70,7 @@ local FACE_KNOWN_X, FACE_BLOCK_X, FACE_SKY_X = Spatial.FACE_KNOWN_X, Spatial.FAC
 ---------------------------------------------------------------------------------------------------
 -- Константы модели
 ---------------------------------------------------------------------------------------------------
-local MAX_CONC      = 2.0    -- избыточное давление у источника; всё, что > 1, «рвётся» наружу сильнее
+local MAX_CONC      = 3.0    -- избыточное давление у источника; всё, что > 1, «рвётся» наружу сильнее
 local EPS           = 0.003  -- ниже — ячейка очищается
 local OVERWRITE     = 0.02   -- чужой газ слабее этого вытесняется, сильнее — блокирует обмен
 local MIN_DT        = 0.05   -- чанк не шагает чаще 20 Гц
@@ -75,6 +80,10 @@ local FLOW_CAP      = 0.45   -- в одну грань уходит не бол�
 local BUOY_RATE     = 1.2    -- 1/с, сила всплытия/оседания на единицу |buoy|
 local VEL_DAMP      = 2.5    -- 1/с, затухание импульса
 local OUTDOOR_DECAY = 0.04   -- 1/с, доп. рассеивание под открытым небом
+local COH_LEAK      = 0.008  -- 1/с, утечка сквозь когезию: облако держится ~полминуты, за 3–4 мин расплывается дымкой
+local PRESS_RATE    = 1.6    -- 1/с, перенос избыточного давления (c > 1) через грань
+local PRESS_ACCEL   = 260    -- юнит/с² на единицу перепада избытка: разгон струи из переполненного объёма
+local PUSH_FOREIGN  = 0.6    -- доля разгона, передаваемая чужому газу у грани (вытеснение)
 local RELEASE_DELAY = 1.0    -- пустой чанк возвращается в пул через секунду
 local AMB           = C.AMBIENT_TEMP
 local KELVIN        = C.KELVIN
@@ -203,6 +212,11 @@ local function StepCell(idx, slot, li, key, f, g, c, dt, outdoor, s)
     local lx, ly, lz = band(li, 7), band(rshift(li, 3), 7), rshift(li, 6)
     local remaining = c
     local blocked = 0
+    local ex = c > 1 and c - 1 or 0                 -- избыточное давление ячейки
+    local leak = COH_LEAK * dt
+    local press = PRESS_RATE * dt
+    local accel = PRESS_ACCEL * dt
+    local ax, ay, az = 0, 0, 0                      -- разгон от перепада давления (пишется после цикла)
 
     for dir = 0, 5 do
         local axis = rshift(dir, 1)
@@ -251,11 +265,28 @@ local function StepCell(idx, slot, li, key, f, g, c, dt, outdoor, s)
                 end
             end
 
+            -- Перепад избыточного давления через грань: разгон своей ячейки (струя), а чужой газ за
+            -- гранью получает толчок — переполненный объём вытесняет его, а не упирается.
+            local dp = ex
+            if cn > 1 then dp = ex - (cn - 1) end
+            if dp > 0 and state == 1 then
+                local a = (neg and -accel or accel) * dp
+                if axis == 0 then ax = ax + a elseif axis == 1 then ay = ay + a else az = az + a end
+                if cn < 0 then
+                    a = a * PUSH_FOREIGN
+                    if axis == 0 then VelX[nidx] = VelX[nidx] + a
+                    elseif axis == 1 then VelY[nidx] = VelY[nidx] + a
+                    else VelZ[nidx] = VelZ[nidx] + a end
+                end
+            end
+
             if cn >= 0 then
-                -- Когезия: расталкивается только избыток над max(c_n, cohesion) — у облака есть край
+                -- Когезия: расталкивается только избыток над max(c_n, cohesion) — у облака есть край;
+                -- медленная утечка COH_LEAK со временем выравнивает облако в дымку по всему объёму.
                 local floorC = cn > coh and cn or coh
                 local flow = 0
                 if c > floorC then flow = k * (c - floorC) end
+                if c > cn then flow = flow + leak * (c - cn) end
                 if axis == 2 then
                     if neg then
                         flow = flow * downScale
@@ -264,6 +295,13 @@ local function StepCell(idx, slot, li, key, f, g, c, dt, outdoor, s)
                         flow = flow * upScale
                         if buoy > 0 then flow = flow + drift * buoy end
                     end
+                end
+                -- давление толкает одинаково во все стороны (тяжёлый газ под напором идёт и вверх);
+                -- не больше 40 % перепада — без перехлёста через равновесие
+                if dp > 0 then
+                    local fp = press * dp
+                    if fp > 0.4 * dp then fp = 0.4 * dp end
+                    flow = flow + fp
                 end
                 local v = (axis == 0 and vx) or (axis == 1 and vy) or vz
                 if neg then v = -v end
@@ -285,9 +323,9 @@ local function StepCell(idx, slot, li, key, f, g, c, dt, outdoor, s)
         end
     end
 
-    -- Распад, конденсация у холодных стен, остывание, затухание импульса
+    -- Распад (в помещении газ почти не исчезает — разбавляется), конденсация, остывание, затухание импульса
     local decay = Pdecay[g]
-    if outdoor then decay = decay + OUTDOOR_DECAY end
+    if outdoor then decay = decay + OUTDOOR_DECAY else decay = decay * PinDecay[g] end
     local cr = Pcond[g]
     if cr > 0 and blocked > 0 then
         decay = decay + cr * blocked / 6 * (T < PcondT[g] and 1 or 0.25)
@@ -302,7 +340,7 @@ local function StepCell(idx, slot, li, key, f, g, c, dt, outdoor, s)
     Temp[idx] = T + (AMB - T) * min(1, Pcool[g] * dt)
     local damp = 1 - VEL_DAMP * dt
     if damp < 0 then damp = 0 end
-    VelX[idx], VelY[idx], VelZ[idx] = VelX[idx] * damp, VelY[idx] * damp, VelZ[idx] * damp
+    VelX[idx], VelY[idx], VelZ[idx] = (VelX[idx] + ax) * damp, (VelY[idx] + ay) * damp, (VelZ[idx] + az) * damp
     if PflameMin[g] <= 1 then Solver.FlammableSeen = CurTime() end
 end
 
@@ -409,6 +447,7 @@ local LocalVec = Vector(0, 0, 0)
 local KIND_EMIT, KIND_SINK, KIND_BLOW, KIND_DUCT = 0, 1, 2, 3
 local BLOW_LENGTH = 520     -- длина струи воздуходувки
 local DUCT_OUT_SPEED = 160  -- скорость выпуска из воздуховода, юнит/с
+local SPILL_SPEED = 120     -- скорость газа, перелитого из переполненной ячейки источника, юнит/с
 local DUCT_HOLD = 6         -- труба вмещает столько газа; полная — впуск перестаёт тянуть (масса сохраняется)
 local DUCT_OUT_RATE = 10    -- выпуск отдаёт до стольких единиц/с, раскладывая по 5 ячейкам перед решёткой
 
@@ -423,11 +462,37 @@ local function InjectAt(px, py, pz, g, amount, t, vx, vy, vz)
     end
     if f == nil or band(f, CELL_KNOWN) == 0 then
         RequestProbe(key)
-    elseif band(f, SOLID_ANY) == 0 then
-        local idx, slot = KeyIndex(key, true)
-        if idx then return Fill(idx, slot, g, amount, t, vx, vy, vz) end
+        return 0
     end
-    return 0
+    if band(f, SOLID_ANY) ~= 0 then return 0 end
+    local idx, slot = KeyIndex(key, true)
+    if not idx then return 0 end
+    local put = Fill(idx, slot, g, amount, t, vx, vy, vz)
+    local rest = amount - put
+    if rest < 1e-4 then return put end
+    -- Ячейка источника упёрлась в MAX_CONC: излишек переливается в соседей через открытые грани
+    -- (с толчком наружу) — источник не теряет массу, а давление вокруг растёт.
+    local n = 0
+    for dir = 0, 5 do
+        if Spatial.FaceState(key, dir) == 1 then n = n + 1 end
+    end
+    if n == 0 then return put end
+    local share = rest / n
+    for dir = 0, 5 do
+        if Spatial.FaceState(key, dir) == 1 then
+            local nkey = key + DIR_STRIDE[dir]
+            local nf = Collision[nkey]
+            if nf ~= nil and band(nf, CELL_KNOWN) ~= 0 and band(nf, SOLID_ANY) == 0 then
+                local nidx, nslot = KeyIndex(nkey, true)
+                if nidx then
+                    local axis, sign = rshift(dir, 1), band(dir, 1) == 1 and -SPILL_SPEED or SPILL_SPEED
+                    put = put + Fill(nidx, nslot, g, share, t,
+                        vx + (axis == 0 and sign or 0), vy + (axis == 1 and sign or 0), vz + (axis == 2 and sign or 0))
+                end
+            end
+        end
+    end
+    return put
 end
 
 --- Разовый выброс (газомёт, API): amount концентрации поровну в ячейки шара радиуса r вокселей (0..3).

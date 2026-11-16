@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.9.1 — gas pressure and airflow
+
+Based on the first player feedback.
+
+- A source that fills its cell no longer loses gas: the excess spills into neighbouring cells with an outward push. Cells hold up to 3 units instead of 2.
+- Concentration above 1 is overpressure. It pushes gas through every open face, speeds the cell up along the pressure drop, and pushes foreign gas aside. A filled room now forces gas out through a door as a jet.
+- Indoors, gases barely decay (`indoorDecay`, default 0.1). In a closed room gas dilutes and spreads as haze instead of disappearing. Steam and nitrogen fog still vanish at the full rate.
+- A slow leak through cohesion: a cloud keeps its edge for about half a minute, then evens out over the room within a few minutes.
+- Hand signal flares (`weapon_aether_flare`, `aether_flare`) in five colours: coloured dynamic light, sparks and 45 s of signal smoke. A lit flare ignites flammable gas and goes out in water.
+- Cloud sprites shrink near floors, ceilings and walls (up to 1.5 voxels away) and no longer cut into them with a hard straight line.
+
 ## 0.9.0 — first public beta
 
 **Simulation**

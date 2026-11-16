@@ -41,7 +41,12 @@ function SWEP:Initialize()
 end
 
 --- Газ гранаты: фиксированный у наследников, выбранный R — у мульти-гранаты.
-function SWEP:CurrentGas() return self.FixedGas or GASES[self:GetGasIndex()] or "smoke" end
+-- Наследники могут сузить список (SWEP.GasList) и бросать другой класс (SWEP.ThrowClass, например фаер).
+function SWEP:GasChoices() return self.GasList or GASES end
+function SWEP:CurrentGas()
+    local list = self:GasChoices()
+    return self.FixedGas or list[self:GetGasIndex()] or list[1]
+end
 function SWEP:HeldSkin() return AetherGas.GasSkin(self:CurrentGas()) end
 -- После броска граната пропадает из руки, через ~0.6 с «достаётся» новая (подъём снизу).
 function SWEP:HeldHidden() return (self.ThrownAt or 0) + 0.6 > CurTime() end
@@ -62,7 +67,7 @@ function SWEP:Throw(speed, upward)
     if CLIENT then return end
 
     local owner = self:GetOwner()
-    local g = ents.Create("aether_grenade")
+    local g = ents.Create(self.ThrowClass or "aether_grenade")
     if not IsValid(g) then return end
     local aim = owner:GetAimVector()
     g:SetPos(owner:EyePos() + aim * 16 + owner:GetRight() * 6)
@@ -75,7 +80,7 @@ function SWEP:Throw(speed, upward)
         phys:SetVelocity(aim * speed + Vector(0, 0, upward) + owner:GetVelocity())
         phys:AddAngleVelocity(Vector(600, math.random(-400, 400), 0))
     end
-    undo.Create("Gas Grenade")
+    undo.Create(self.UndoName or "Gas Grenade")
         undo.AddEntity(g)
         undo.SetPlayer(owner)
     undo.Finish()
@@ -93,7 +98,7 @@ function SWEP:Reload()
     if self.FixedGas then return end
     if not IsFirstTimePredicted() or (self.NextCycle or 0) > CurTime() then return end
     self.NextCycle = CurTime() + 0.4
-    self:SetGasIndex(self:GetGasIndex() % #GASES + 1)
+    self:SetGasIndex(self:GetGasIndex() % #self:GasChoices() + 1)
     if CLIENT then surface.PlaySound("weapons/smg1/switch_single.wav") end
 end
 

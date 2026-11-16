@@ -10,7 +10,7 @@ if AetherGas and AetherGas.API and AetherGas.API.Version >= 1 then
 end
 ```
 
-A gas can be passed by name (`"chlorine"`) or by numeric id. Positions are world-space `Vector`s. Concentration runs from 0 to 1: 1 is a dense cloud, and the grid stores up to 2 right next to a source. Temperatures are in °C.
+A gas can be passed by name (`"chlorine"`) or by numeric id. Positions are world-space `Vector`s. Concentration runs from 0 to 1: 1 is a dense cloud, and the grid stores up to 3 right next to a source. Concentration above 1 is overpressure: it pushes gas out faster and forms jets through doors. Temperatures are in °C.
 
 ## Registering a gas (shared)
 
@@ -45,7 +45,8 @@ Any field you leave out takes the default shown in brackets.
 | `diffusion` [0.15] | exchange with each open neighbour, 1/s |
 | `spread` [0.5] | pressure equalisation (room filling), 0..1 |
 | `cohesion` [0] | below this concentration the gas stops spreading, which gives the cloud an edge |
-| `decay` [0.01] | dissipation, 1/s. Under open sky it is faster |
+| `decay` [0.01] | dissipation under open sky, 1/s |
+| `indoorDecay` [0.1] | decay multiplier indoors: gas in a closed room dilutes instead of vanishing. Use 1 for gases that condense or evaporate |
 | `emitTemp` [20], `cooling` [0.05] | temperature at the source (°C) and how fast it relaxes to ambient |
 | `color`, `opacity` [0.5] | look. With `opacity` < 0.005 the gas is not drawn at all |
 | `fogDistance` [0] | how far you can see from inside the cloud at concentration 1, in units. 0 = no fog |

@@ -30,6 +30,7 @@ Smoke fills rooms and pours through opened doors and broken windows. Chlorine cr
 - Exhaust fan (admin), blower fan, and duct vents linked with the tool gun.
 - Gas analyzer.
 - Gas Sprayer with an in-game custom gas editor.
+- Hand signal flares in five colours: coloured light, sparks and a column of signal smoke for 45 s. A burning flare ignites flammable gas.
 
 ### Compatibility
 
@@ -52,6 +53,7 @@ The addon is server-side and client-side Lua plus materials and models. Every cl
 | Gas grenades | Weapons → Aether Gas → `Grenade: …` | LMB throw, RMB lob |
 | Multi-grenade (admin) | Weapons → `Grenade: ALL GASES` | R cycles the gas |
 | Gas cylinders | Entities → Aether Gas → `Cylinder: …` | E opens or closes the valve. C-menu → *Gas type* / *Turn on/off* / *Unmarked (old) look*. `Cylinder: Unmarked (old)` is a rusty cylinder with no labels, for machinima |
+| Signal flares | Weapons → `Signal Flare`; Entities → `Flare: …` | LMB light and throw, RMB light and drop at your feet, R changes the colour |
 | Gas Sprayer | Weapons → `Gas Sprayer` | LMB spray, RMB settings and custom gas editor, R removes gas at aim |
 | Gas analyzer | Weapons → `Gas Analyzer` | LMB switches the probe between breathing zone and aim point. RMB cycles device screen / HUD |
 | Spare filter | Entities → `Gas Mask Filter` | E: if the mask filter is below half, it is replaced right away; otherwise the filter is kept as a spare (up to 3). A spare is screwed in automatically when the current filter runs out |

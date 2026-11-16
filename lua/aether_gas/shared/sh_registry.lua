@@ -4,7 +4,7 @@
 AetherGas = AetherGas or {}
 local AetherGas = AetherGas
 
-AetherGas.Version = "0.9.0"
+AetherGas.Version = "0.9.1"
 
 -- Пространства имён модулей. Создаются здесь один раз: модули берут на них ссылки при загрузке, а
 -- lua refresh / lua_openscript не теряет накопленное состояние (таблицы переживают повторный include).
@@ -139,7 +139,7 @@ AetherGas.GasParams = P
 local PARAM_FIELDS = {
     "Density", "Diffusion", "Spread", "Cohesion", "Decay", "EmitTemp", "Cooling", "Opacity", "VisionThreshold",
     "Muffle", "Damage", "DamageThreshold", "Slowdown", "FlameMin", "FlameMax", "BlastDamage",
-    "CondenseRate", "CondenseTemp",
+    "CondenseRate", "CondenseTemp", "IndoorDecay",
 }
 for i = 1, #PARAM_FIELDS do
     local name = PARAM_FIELDS[i]
@@ -154,7 +154,7 @@ P.Density[0], P.Diffusion[0], P.Spread[0], P.Decay[0], P.Cohesion[0] = 1, 0, 0, 
 P.EmitTemp[0], P.Cooling[0], P.Opacity[0], P.VisionThreshold[0] = C.AMBIENT_TEMP, 0, 0, NEVER_HIGH
 P.Muffle[0], P.Damage[0], P.DamageThreshold[0], P.Slowdown[0] = 0, 0, NEVER_HIGH, 0
 P.FlameMin[0], P.FlameMax[0], P.BlastDamage[0] = NEVER_HIGH, NEVER_LOW, 0
-P.CondenseRate[0], P.CondenseTemp[0] = 0, NEVER_LOW
+P.CondenseRate[0], P.CondenseTemp[0], P.IndoorDecay[0] = 0, NEVER_LOW, 1
 
 local DEFAULTS = {
     printName       = "Gas",
@@ -163,7 +163,9 @@ local DEFAULTS = {
     spread          = 0.5,               -- сила выравнивания давления (flood fill), 0..1
     cohesion        = 0,                 -- ниже этой концентрации ячейка газ дальше не расталкивает:
                                          -- облако держит объём ≈ масса / cohesion с чёткой границей
-    decay           = 0.01,              -- экспоненциальная диссипация, 1/с
+    decay           = 0.01,              -- экспоненциальная диссипация под открытым небом, 1/с
+    indoorDecay     = 0.1,               -- множитель decay в помещении: газ в закрытой комнате почти не
+                                         -- исчезает, а разбавляется (1 — пар/азот: конденсация, испарение)
     emitTemp        = C.AMBIENT_TEMP,    -- температура на выходе источника, °C
     cooling         = 0.05,              -- релаксация температуры к окружающей, 1/с
     color           = Color(200, 200, 200),
@@ -217,6 +219,7 @@ local function CompileParams(g)
     P.BlastDamage[id]     = g.flammable and g.blastDamage or 0
     P.CondenseRate[id]    = g.condenses and g.condenseRate or 0
     P.CondenseTemp[id]    = g.condenses and g.condenseTemp or NEVER_LOW
+    P.IndoorDecay[id]     = g.indoorDecay
 end
 
 local function RebuildChecksum()
@@ -258,6 +261,7 @@ function AetherGas.RegisterGas(name, def)
     g.spread          = Num(g.spread, 0.5, 0, 1)
     g.cohesion        = Num(g.cohesion, 0, 0, 1)
     g.decay           = Num(g.decay, 0.01, 0, 10)
+    g.indoorDecay     = Num(g.indoorDecay, 0.1, 0, 1)
     g.emitTemp        = Num(g.emitTemp, C.AMBIENT_TEMP, -100, 2000)
     g.cooling         = Num(g.cooling, 0.05, 0, 10)
     g.opacity         = Num(g.opacity, 0.5, 0, 4)
@@ -393,6 +397,7 @@ AetherGas.RegisterGas("steam", {
     blocksVision = true, visionThreshold = 0.55,
     muffle = 0.1, fogDistance = 260,
     damage = 9, damageType = DMG_BURN, damageThreshold = 0.45, maskProtects = false,
+    indoorDecay = 1,
     condenses = true, condenseRate = 0.6, condenseTemp = 60,
     grenade = { 12, 10, 120 },
     screen = { fog = 1.0 },
@@ -480,7 +485,7 @@ AetherGas.RegisterGas("nitrogen", {
     blocksVision = true, visionThreshold = 0.5,
     fogDistance = 300,
     damage = 2, damageType = DMG_DROWN, damageThreshold = 0.5, maskProtects = false,
-    slowdown = 0.4,
+    slowdown = 0.4, indoorDecay = 1,
     grenade = { 12, 12, 0 },
     extinguishes = true,   -- пламя внутри облака тухнет
     screen = { fog = 0.6, darken = 0.2 },

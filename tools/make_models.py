@@ -601,6 +601,40 @@ R_METAL = (0, 0.625, 0.5, 1)
 R_CAP = (0.5, 0.625, 1, 1)
 
 
+FLARE_ORDER = ["signal_red", "signal_green", "signal_yellow", "signal_violet", "signal_orange"]   # = скины фаера
+
+
+def tex_flare(gas):
+    """Сигнальный фаер: картонная гильза цвета дыма, надпись вдоль гильзы (тонкий цилиндр: по окружности
+    тексели в ~3 раза уже, чем по длине, — надпись рисуется с поправкой и не сплющивается), белое кольцо
+    у головки, тёмная зажигательная головка, пластиковый колпачок того же цвета."""
+    col = GAS_GLOW[gas]
+    S, H = 512, 320
+    img = Image.new("RGB", (S, S))
+    body = noise_img((S, H), tuple(int(c * 0.9) for c in col), 7, 141)
+    d = ImageDraw.Draw(body)
+    d.rectangle([0, 18, S, 40], fill=(236, 236, 230))
+    d.rectangle([0, 286, S, 298], fill=(30, 30, 30))
+    ink = (20, 20, 20) if sum(col) > 420 else (245, 245, 240)
+    # растяжение по длине: окружность 2π·0.75 на S пикселей, длина 8.6 на H пикселей
+    stretch = (8.6 / H) / (2 * math.pi * 0.75 / S)
+    wpx, hpx = 92, 236
+    tw, th = int(stretch * hpx / wpx * 100), 100
+    for k in range(2):
+        cx = int(S * (0.25 + 0.5 * k))
+        t = Image.new("RGBA", (tw, th), (0, 0, 0, 0))
+        dt = ImageDraw.Draw(t)
+        text_centered(dt, (0, 0, tw, 62), "SIGNAL  FLARE  " + gas.split("_")[1].upper(), font("impact.ttf", 58), ink)
+        text_centered(dt, (0, 64, tw, 100), "STRIKE CAP  -  HOLD AWAY FROM FACE", font("consolab.ttf", 28), ink)
+        t = t.rotate(90, expand=True).resize((wpx, hpx), Image.LANCZOS)
+        body.paste(t, (cx - wpx // 2, 46), t)
+    wear(body, 142, 80, tuple(min(255, c + 30) for c in col))
+    paste_region(img, face_front(body), R_BODY)
+    paste_region(img, noise_img((256, 192), (46, 40, 36), 10, 143, 1.2), R_METAL)    # зажигательная головка
+    paste_region(img, noise_img((256, 192), tuple(int(c * 0.75) for c in col), 5, 144), R_CAP)
+    return img
+
+
 def tex_grenade(gas):
     paint, band, label, sub = GASES[gas]
     S = 512
@@ -1173,6 +1207,20 @@ def model_filter():
     return m, phys, [("root", -1, (0, 0, 0))], 1, "plastic", None
 
 
+def model_flare():
+    """Ручной сигнальный фаер (ось Z): гильза, рифлёный колпачок снизу, зажигательная головка сверху.
+    Горящий конец — z = 10.2 (sh: aether_flare TIP)."""
+    mat = "flare_signal_red"
+    m = combine(
+        cylinder(mat, R_BODY, 0.75, 8.6, 24, base=(0, 0, 0.8), cap_rect=R_CAP, fit=False),
+        cylinder(mat, R_CAP, 0.86, 0.8, 24, base=(0, 0, 0), cap_rect=R_CAP),
+        torus(mat, R_CAP, 0.86, 0.08, center=(0, 0, 0.4), seg=24, side=5),
+        cylinder(mat, R_METAL, 0.62, 0.8, 20, base=(0, 0, 9.4), r_top=0.5, cap_rect=R_METAL),
+    )
+    phys = cylinder("phys", R_BODY, 0.86, 10.2, 8)
+    return m, phys, [("root", -1, (0, 0, 0))], 0.5, "plastic", [f"flare_{g}" for g in FLARE_ORDER]
+
+
 def model_emitter():
     mat = "emitter"
     m = combine(
@@ -1197,6 +1245,7 @@ MODELS = {
     "gas_filter": (model_filter, lambda: {}),   # материал противогаза (собирается после gasmask)
     "gas_analyzer": (model_analyzer, lambda: {"analyzer": tex_analyzer()}),
     "gas_emitter": (model_emitter, lambda: {"emitter": tex_emitter()}),
+    "signal_flare": (model_flare, lambda: {f"flare_{g}": tex_flare(g) for g in FLARE_ORDER}),
     "gas_sprayer": (model_sprayer, lambda: {"sprayer": tex_sprayer(), "sprayer_tank": tex_sprayer_tank()}),
 }
 
@@ -1327,8 +1376,11 @@ ICONS = {  # класс → (модель, материал-подмена дл�
     "weapon_aether_analyzer": ("gas_analyzer", None, (90, 255, 120), 30, 12),
     "weapon_aether_gasgun": ("gas_sprayer", None, (110, 210, 255), 70, 12),
     "aether_filter": ("gas_filter", None, (120, 170, 120), 30, 22),
+    "weapon_aether_flare": ("signal_flare", "flare_signal_red", (214, 52, 44), 30, 20),
     "aether_cylinder_plain": ("gas_cylinder", "cylinder_plain", (150, 135, 110), 30, 12),
 }
+for _g in FLARE_ORDER:   # пресеты фаеров спавн-меню
+    ICONS["aether_flare_" + _g] = ("signal_flare", "flare_" + _g, GAS_GLOW[_g], 30, 20)
 for _g in GAS_ORDER:   # гранаты и баллоны-пресеты на каждый газ (скины)
     ICONS["weapon_aether_grenade_" + _g] = ("gas_grenade", "grenade_" + _g, GAS_GLOW[_g], -30, 18)
     ICONS["aether_cylinder_" + _g] = ("gas_cylinder", "cylinder_" + _g, GAS_GLOW[_g], 30, 12)
@@ -1406,6 +1458,22 @@ def build_mask_overlay():
             f.write('"UnlitGeneric"\n{\n\t"$basetexture" "aether/' + name + '"\n\t"$vertexcolor" "1"\n\t"$vertexalpha" "1"\n\t"$translucent" "1"\n}\n')
 
 
+def build_flare_glow():
+    """Свечение горящего фаера: радиальный белый спрайт 128×128 (цвет — вершинный), аддитивный."""
+    N = 128
+    y, x = np.mgrid[0:N, 0:N].astype(float)
+    r = np.sqrt((x - N / 2 + 0.5) ** 2 + (y - N / 2 + 0.5) ** 2) / (N / 2)
+    a = np.clip(1 - r, 0, 1) ** 2.2 + np.clip(1 - r * 4, 0, 1) * 0.8      # мягкий ореол + яркое ядро
+    v = np.uint8(np.clip(a, 0, 1) * 255)
+    img = Image.merge("RGBA", (Image.fromarray(v),) * 3 + (Image.fromarray(v),))
+    out = os.path.join(ADDON, "materials", "aether")
+    os.makedirs(out, exist_ok=True)
+    write_vtf_rgba(os.path.join(out, "flare_glow.vtf"), img)
+    with open(os.path.join(out, "flare_glow.vmt"), "w", newline="\n") as f:
+        f.write('"UnlitGeneric"\n{\n\t"$basetexture" "aether/flare_glow"\n\t"$additive" "1"\n'
+                '\t"$vertexcolor" "1"\n\t"$vertexalpha" "1"\n\t"$nocull" "1"\n}\n')
+
+
 def write_vtf_rgba(path, img):
     """Несжатый BGRA8888 VTF 7.2 с mip-цепочкой (размеры — степени двойки)."""
     import struct
@@ -1438,5 +1506,6 @@ if __name__ == "__main__":
         build_icons(meshes)
         build_killicons()
         build_mask_overlay()
+        build_flare_glow()
         print("icons ok")
     shutil.rmtree(os.path.join(GAME, "materialsrc", "models", "aether"), ignore_errors=True)

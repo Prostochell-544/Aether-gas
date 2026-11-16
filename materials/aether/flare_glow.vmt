@@ -1,0 +1,8 @@
+"UnlitGeneric"
+{
+	"$basetexture" "aether/flare_glow"
+	"$additive" "1"
+	"$vertexcolor" "1"
+	"$vertexalpha" "1"
+	"$nocull" "1"
+}

@@ -24,7 +24,7 @@ local Solver    = AetherGas.Solver
 local P         = AetherGas.GasParams
 
 local band, rshift = bit.band, bit.rshift
-local min, sqrt = math.min, math.sqrt
+local min, sqrt, abs = math.min, math.sqrt, math.abs
 local SysTime = SysTime
 
 local Pool = Spatial.Pool
@@ -63,6 +63,29 @@ local DRAW_MIN   = 0.02
 local REORIENT   = 0.94      -- cos(20°)
 local SHIFT      = 0.18      -- отступ спрайта от закрытой грани, доля вокселя
 local WALL_ALPHA = 0.8       -- множитель альфы за каждую закрытую грань
+-- Срез спрайта о пол/стену: квад, развёрнутый к камере, протыкает геометрию, и непрозрачная часть
+-- текстуры даёт прямую линию. Видимая часть клуба — ~VIS_CORE от полуразмера; спрайт ужимается так,
+-- чтобы она не доходила до ближайшей закрытой плоскости (своя грань или грань соседа, до 1.5 вокселя).
+local VIS_CORE   = 0.62
+local MIN_SCALE  = 0.35
+local BIG        = 1e9
+
+-- Плоскость закрытой грани вдоль оси от ячейки key: своя грань / грань соседа (на вокселе дальше).
+-- bit — бит FACE_BLOCK оси, stride — шаг ключа по оси. Возвращает координату плоскости или ±BIG.
+local function UpperPlane(f, key, bit, stride, hi, s)
+    if f and band(f, bit) ~= 0 then return hi end
+    local f2 = Collision[key + stride]
+    if f2 and band(f2, bit) ~= 0 then return hi + s end
+    return BIG
+end
+
+local function LowerPlane(key, bit, stride, lo, s)
+    local f1 = Collision[key - stride]
+    if f1 and band(f1, bit) ~= 0 then return lo end
+    local f2 = Collision[key - 2 * stride]
+    if f2 and band(f2, bit) ~= 0 then return lo - s end
+    return -BIG
+end
 local INVISIBLE  = 0.005     -- газы прозрачнее (водород, зарин…) не рисуются вовсе
 -- Спрайты у самой камеры гаснут: изнутри облака видимость задаёт туман движка, а не квад во весь экран.
 local NEAR0, NEAR1 = 0.45, 2.2   -- в долях вокселя: ближе NEAR0 — прозрачен, дальше NEAR1 — полностью
@@ -213,6 +236,31 @@ local function Build(slot, fx, fy, fz, rx, ry, rz, ux, uy, uz, ex, ey, ez)
                     local cr, sr = COS[rot], SIN[rot]
                     local Rx, Ry, Rz = (cr * rx + sr * ux) * half, (cr * ry + sr * uy) * half, (cr * rz + sr * uz) * half
                     local Ux, Uy, Uz = (cr * ux - sr * rx) * half, (cr * uy - sr * ry) * half, (cr * uz - sr * rz) * half
+
+                    -- Не протыкать пол/потолок/стены: протяжённость квада по оси (|R|+|U|) × VIS_CORE не
+                    -- длиннее расстояния до ближайшей закрытой плоскости; иначе квад ужимается целиком.
+                    local cx0, cy0, cz0 = ox + lx * s, oy + ly * s, oz + lz * s
+                    local hiX = UpperPlane(f, key, FACE_BLOCK_X, 1, cx0 + s, s)
+                    local hiY = UpperPlane(f, key, FACE_BLOCK_X * 2, 1024, cy0 + s, s)
+                    local hiZ = UpperPlane(f, key, FACE_BLOCK_X * 4, 1048576, cz0 + s, s)
+                    local loX = LowerPlane(key, FACE_BLOCK_X, 1, cx0, s)
+                    local loY = LowerPlane(key, FACE_BLOCK_X * 2, 1024, cy0, s)
+                    local loZ = LowerPlane(key, FACE_BLOCK_X * 4, 1048576, cz0, s)
+                    if loZ > -BIG and z < loZ + s * 0.3 then z = loZ + s * 0.3 end   -- клуб не лежит в полу
+                    local k = 1
+                    local e = (abs(Rx) + abs(Ux)) * VIS_CORE
+                    local cl = min(x - loX, hiX - x)
+                    if e > cl then k = min(k, cl / e) end
+                    e = (abs(Ry) + abs(Uy)) * VIS_CORE
+                    cl = min(y - loY, hiY - y)
+                    if e > cl then k = min(k, cl / e) end
+                    e = (abs(Rz) + abs(Uz)) * VIS_CORE
+                    cl = min(z - loZ, hiZ - z)
+                    if e > cl then k = min(k, cl / e) end
+                    if k < 1 then
+                        if k < MIN_SCALE then k = MIN_SCALE end
+                        Rx, Ry, Rz, Ux, Uy, Uz = Rx * k, Ry * k, Rz * k, Ux * k, Uy * k, Uz * k
+                    end
 
                     -- ячейка атласа 2×2 по ключу (другой множитель, чем у поворота — нет корреляции)
                     local q = (key * 7) % 4
