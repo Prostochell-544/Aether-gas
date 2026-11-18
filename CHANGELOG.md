@@ -6,6 +6,7 @@
 - **No more washing off in water.** Contamination keeps burning until the agent wears off, and a suit put on after you are contaminated no longer helps.
 - The Aether suit no longer sets the GMod Bombs `hazsuited` flag.
 - **Interface in English, Russian and Ukrainian.** Q menu, sprayer and custom gas editor, tool texts, HUD, gas names and server messages. Choose in Q → Utilities → Aether Gas → Language, or `aether_language auto|en|ru|uk` (Auto follows the game language). Server messages are sent as string keys, so every player reads them in their own language.
+- Signal flares smoke much less (1.0 instead of 3.5 per second): a thin coloured trail instead of a room-filling cloud.
 - API: `AetherGas.L(key, ...)`, `AetherGas.GasName(def)`, `AetherGas.Notify(ply, mode, key, ...)` (server).
 
 ## 0.10.0 — dose, contamination, cold gas, Wiremod, Z-City and GSmoke

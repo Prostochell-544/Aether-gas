@@ -16,7 +16,7 @@ ENT.Spawnable = false   -- в спавн-меню — пресеты по цве
 ENT.RenderGroup = RENDERGROUP_BOTH
 
 local BURN      = 45      -- секунд горения
-local RATE      = 3.5     -- концентрация/с сигнального дыма
+local RATE      = 1.0     -- концентрация/с: тонкий шлейф (≈1/5 сигнальной гранаты 9×25), комнату не заливает
 local TIP       = Vector(0, 0, 10.2)   -- горящий конец в координатах модели
 local EMIT_TEMP = 90      -- дым горячий у кончика: поднимается столбом, остыв — стелется
 local COLORS    = { "signal_red", "signal_green", "signal_yellow", "signal_violet", "signal_orange" }
