@@ -103,5 +103,12 @@ function API.RemoveMask(ply, drop) AetherGas.RemoveMask(ply, drop) end
 --- Защита дыхания вашего мода: fn(ply) → 0..1 (или true). Урон Aether × (1 − защита).
 function API.RegisterMaskProvider(name, fn) AetherGas.RegisterMaskProvider(name, fn) end
 
+--- Накопленная доза газа в организме (эквивалент концентрации) и снятие заражения кожи.
+function API.GetDose(ent, gas) return AetherGas.GetDose and AetherGas.GetDose(ent, gas) or 0 end
+function API.Decontaminate(ent) if AetherGas.Decontaminate then AetherGas.Decontaminate(ent) end end
+
+--- Включить/выключить устройство Aether (баллон, эмиттер, вентилятор, решётку).
+function API.SetDeviceOn(ent, on) if AetherGas.SetDeviceOn then AetherGas.SetDeviceOn(ent, on) end end
+
 --- Задать пользовательский газ (слоты "custom_1".."custom_4"): flat — поля AetherGas.CustomGasFields.
 function API.SetCustomGas(slot, flat) return AetherGas.SetCustomGas(slot, flat) end

@@ -13,6 +13,7 @@ AetherGas = AetherGas or {}
 
 local SHARED_FILES = {
     "aether_gas/shared/sh_registry.lua",
+    "aether_gas/shared/sh_lang.lua",
     "aether_gas/shared/sh_spatial.lua",
     "aether_gas/shared/sh_portals.lua",
     "aether_gas/shared/sh_solver.lua",
@@ -27,6 +28,7 @@ local SERVER_FILES = {
     "aether_gas/server/sv_debug.lua",
     "aether_gas/server/sv_network.lua",
     "aether_gas/server/sv_compat.lua",
+    "aether_gas/server/sv_devices.lua",
 }
 
 local CLIENT_FILES = {

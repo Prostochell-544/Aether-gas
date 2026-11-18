@@ -1,0 +1,705 @@
+-- lua/aether_gas/shared/sh_lang.lua
+--[[
+    Локализация интерфейса: английский, русский, украинский.
+    Клиентский ConVar aether_language = auto | en | ru | uk (auto — по языку игры gmod_language).
+    AetherGas.L(key, ...) → строка выбранного языка (string.format с аргументами), запасной — английский,
+    затем сам ключ. Сервер шлёт игроку ключ сообщения (AetherGas.Notify, sv_network.lua) — текст
+    переводится на клиенте, поэтому у каждого игрока свой язык.
+    AetherGas.OnLanguage(id, fn) — fn() сейчас и при каждой смене языка (language.Add тулганов и т. п.).
+]]
+
+local AetherGas = AetherGas
+AetherGas.Lang = AetherGas.Lang or {}
+local Lang = AetherGas.Lang
+
+Lang.en = {
+    ["lang.name"] = "English",
+    ["lang.auto"] = "Auto (game language)",
+
+    -- Q → Utilities → Aether Gas
+    ["menu.title"] = "Aether - Volumetric Smoke & Gas Dynamics v%s",
+    ["menu.language"] = "Language",
+    ["menu.client"] = "Client",
+    ["menu.draw"] = "Draw gas clouds",
+    ["menu.effects"] = "Screen effects (cough, distortion, fog)",
+    ["menu.draw_distance"] = "Draw distance",
+    ["menu.mesh_budget"] = "Mesh rebuild budget (ms/frame)",
+    ["menu.mask_toggle"] = "Gas mask: put on / take off  (E+R, !mask)",
+    ["menu.mask_drop"] = "Gas mask: drop",
+    ["menu.suit_drop"] = "Hazmat suit: take off  (E+Alt, !suit)",
+    ["menu.protection"] = "The gas mask protects breathing, the hazmat suit protects the skin. Sarin and mustard gas need both.",
+    ["menu.analyzer"] = "Gas analyzer (RMB with the analyzer cycles screen / HUD)",
+    ["menu.an_screen"] = "Live screen on the device",
+    ["menu.an_hud"] = "HUD panel",
+    ["menu.an_beep"] = "Beeping",
+    ["menu.an_marker"] = "Remote probe marker",
+    ["menu.sprayer"] = "Gas sprayer (RMB with the sprayer opens the same menu)",
+    ["menu.sprayer_open"] = "Open sprayer settings and custom gas editor",
+    ["menu.server_admin"] = "Server (superadmin)",
+    ["menu.server_noadmin"] = "Server settings: superadmin only",
+    ["menu.enabled"] = "Simulation enabled",
+    ["menu.voxel"] = "Voxel size (detail)",
+    ["menu.voxel_help"] = "Smaller = finer spreading but more CPU: cell count grows as 1/size^3 (32 = 2x cells of 40, 64 = 4x fewer). Changing it resets all gas.",
+    ["menu.max_chunks"] = "Max active chunks",
+    ["menu.tick_budget"] = "Solver budget (ms/tick)",
+    ["menu.probe_budget"] = "Collision probe budget (traces/tick)",
+    ["menu.grates"] = "Grates block gas",
+    ["menu.damage_scale"] = "Damage scale",
+    ["menu.npc_blind"] = "Smoke blinds NPCs / NextBots",
+    ["menu.mask_filter"] = "Gas mask filter (s)",
+    ["menu.wind_speed"] = "Wind speed",
+    ["menu.wind_yaw"] = "Wind direction (yaw)",
+    ["menu.stormfox"] = "Use StormFox 2 wind",
+    ["menu.sync"] = "Client sync interval (s)",
+    ["menu.tunnel"] = "Bullets clear smoke (tunnel strength)",
+    ["menu.tunnel_help"] = "How much gas a bullet knocks out along its path. 0 = bullets do not cut smoke.",
+    ["menu.fire_smoke"] = "Smoke from fire",
+    ["menu.fire_smoke_help"] = "vFire, env_fire (Fire Tool) and burning props emit fire smoke. 0 = fire does not smoke.",
+    ["menu.fire_vfire"] = "Gas explosions spread vFire",
+    ["menu.vfire_wind"] = "vFire flames lean with Aether wind",
+    ["menu.custom_everyone"] = "Everyone may edit custom gases",
+    ["menu.toxic_admin"] = "Only admins spray toxic / flammable gases",
+    ["menu.clear"] = "Remove all gas",
+    ["menu.settings"] = "Settings",
+
+    -- меню газомёта и редактор
+    ["editor.title"] = "Aether - Gas Sprayer",
+    ["editor.gas"] = "Gas to spray",
+    ["editor.mode"] = "Mode",
+    ["editor.mode_aim"] = "Cloud at aim point",
+    ["editor.mode_jet"] = "Jet from the nozzle",
+    ["editor.sprayer"] = "Sprayer",
+    ["editor.rate"] = "Rate (per second)",
+    ["editor.distance"] = "Distance",
+    ["editor.radius"] = "Cloud radius (voxels)",
+    ["editor.jet_speed"] = "Jet speed",
+    ["editor.temp"] = "Temperature (-200 = gas default)",
+    ["editor.help"] = "LMB - spray, R - remove gas at aim. Gases marked * are custom: edit them on the right, press Apply, then pick them here.",
+    ["editor.start_from"] = "Start from an existing gas...",
+    ["editor.edit_slot"] = "Edit: %s",
+    ["editor.custom_prefix"] = "Custom %s",
+    ["editor.damage_type"] = "Damage type: %s",
+    ["editor.apply"] = "Apply",
+    ["editor.apply_spray"] = "Apply and spray it",
+    ["dmg.toxic"] = "toxic", ["dmg.burn"] = "burn", ["dmg.asphyxia"] = "asphyxia", ["dmg.acid"] = "acid",
+
+    ["field.printName"] = "Name",
+    ["field.color"] = "Color",
+    ["field.density"] = "Density (air = 1)",
+    ["field.emitTemp"] = "Temperature at source, C",
+    ["field.cooling"] = "Cooling rate, 1/s",
+    ["field.opacity"] = "Opacity",
+    ["field.fogDistance"] = "Visibility inside the cloud (0 = no fog)",
+    ["field.blocksVision"] = "Blocks line of sight (players, NPCs)",
+    ["field.visionThreshold"] = "Concentration that blocks sight",
+    ["field.diffusion"] = "Diffusion",
+    ["field.spread"] = "Pressure spread (room filling)",
+    ["field.cohesion"] = "Cohesion (sharp cloud edge)",
+    ["field.decay"] = "Decay, 1/s",
+    ["field.muffle"] = "Sound muffling",
+    ["field.damage"] = "Damage, HP/s at full concentration",
+    ["field.damageKind"] = "Damage type",
+    ["field.damageThreshold"] = "No damage below concentration",
+    ["field.maskProtects"] = "Gas mask protects",
+    ["field.skinDamage"] = "Skin damage (only the hazmat suit stops this part)",
+    ["field.slowdown"] = "Movement slowdown",
+    ["field.clearance"] = "Body clearance time, s (dose leaves the body)",
+    ["field.linger"] = "Lasting effect (share of harm from the dose)",
+    ["field.deposit"] = "Settles on floors and skin (contamination)",
+    ["field.jtCooling"] = "Cooling when released from a cylinder, C",
+    ["field.flammable"] = "Flammable / explosive",
+    ["field.flameMin"] = "Lower flammable limit",
+    ["field.flameMax"] = "Upper flammable limit",
+    ["field.blastDamage"] = "Explosion damage per voxel",
+    ["field.igniteOnBlast"] = "Explosion sets things on fire",
+    ["field.extinguishes"] = "Puts out fire",
+    ["field.screen.cough"] = "Screen: coughing",
+    ["field.screen.distortion"] = "Screen: distortion",
+    ["field.screen.blur"] = "Screen: tears / blur",
+    ["field.screen.narrow"] = "Screen: tunnel vision",
+    ["field.screen.darken"] = "Screen: hypoxia darkening",
+    ["field.screen.fog"] = "Screen: fogging",
+    ["field.screen.shake"] = "Screen: convulsions",
+
+    -- газы
+    ["gas.smoke"] = "Tactical Smoke",
+    ["gas.chlorine"] = "Chlorine",
+    ["gas.methane"] = "Methane",
+    ["gas.co_smoke"] = "Fire Smoke (CO)",
+    ["gas.steam"] = "Steam",
+    ["gas.tear_gas"] = "Tear Gas (CS)",
+    ["gas.sarin"] = "Sarin (GB)",
+    ["gas.mustard"] = "Mustard Gas (HD)",
+    ["gas.h2s"] = "Hydrogen Sulfide",
+    ["gas.ammonia"] = "Ammonia",
+    ["gas.hydrogen"] = "Hydrogen",
+    ["gas.nitrogen"] = "Cryogenic Nitrogen Fog",
+    ["gas.co2"] = "Carbon Dioxide",
+    ["gas.signal_red"] = "Signal Smoke (Red)",
+    ["gas.signal_green"] = "Signal Smoke (Green)",
+    ["gas.signal_yellow"] = "Signal Smoke (Yellow)",
+    ["gas.signal_violet"] = "Signal Smoke (Violet)",
+    ["gas.signal_orange"] = "Signal Smoke (Orange)",
+    ["gas.tobacco_smoke"] = "Tobacco Smoke",
+
+    -- HUD
+    ["hud.contam"] = "CONTAMINATED (%s)",
+    ["hud.suit_on"] = "HAZMAT SUIT ON   (E+Alt or !suit - take off)",
+    ["hud.mask_on"] = "MASK ON  (!mask or E+R - take off)",
+    ["hud.mask_off"] = "MASK OFF  (!mask or E+R - put on)",
+    ["hud.spare"] = "   spare filters: %d",
+    ["hud.gun"] = "%s   %.1f/s   %s   [RMB] settings  [R] vacuum",
+    ["hud.gun_jet"] = "jet",
+    ["hud.gun_aim"] = "at aim",
+    ["hud.grenade"] = "Gas: %s",
+    ["hud.grenade_switch"] = "   [R] switch",
+    ["hud.an_title"] = "AETHER GAS ANALYZER",
+    ["hud.an_remote"] = "probe: remote [LMB]   display [RMB]",
+    ["hud.an_local"] = "probe: breathing zone [LMB]   display [RMB]",
+    ["hud.an_gas"] = "Gas:   %s",
+    ["hud.an_conc"] = "Conc:  %5.1f %%    Temp: %4.0f C",
+    ["hud.an_mode"] = "Analyzer: %s",
+    ["hud.an_both"] = "device screen + HUD",
+    ["hud.an_screen"] = "device screen only",
+    ["hud.an_hudonly"] = "HUD only",
+
+    -- сообщения сервера
+    ["hint.mask_pocket"] = "Gas mask put in your pocket: take off your %s mask, then type !mask",
+    ["hint.mask_on"] = "Gas mask ON. Take off / put on: type !mask (or hold E and press R)",
+    ["hint.mask_already"] = "You already wear a %s gas mask. Take it off first.",
+    ["hint.another_mod"] = "another mod's",
+    ["hint.suit_on"] = "Hazmat suit ON: it protects the skin only - wear a gas mask too. Take it off: hold E and press Alt, or type !suit",
+    ["hint.suit_already"] = "You already wear a hazmat suit.",
+    ["hint.need_mask"] = "You need a gas mask to use a filter.",
+    ["hint.filters_full"] = "You cannot carry more spare filters.",
+    ["hint.mask_to_pocket"] = "Your Aether gas mask went to your pocket: another mod's mask is on.",
+    ["hint.custom_admin"] = "Custom gases can only be edited by admins on this server.",
+    ["hint.filter_swapped"] = "Swapped in the fresher filter from this mask.",
+    ["hint.gun_admin"] = "Only admins can spray toxic or flammable gases on this server.",
+
+    -- тулганы
+    ["tool.duct.name"] = "Gas Duct / Hose",
+    ["tool.duct.desc"] = "Connect a canister to a hose nozzle, or an intake vent to an exhaust vent",
+    ["tool.duct.left"] = "Select a gas canister, or place / select an intake vent",
+    ["tool.duct.left_1"] = "Place the hose nozzle / exhaust vent",
+    ["tool.duct.right"] = "Disconnect the hose or duct of the aimed object",
+    ["tool.duct.reload"] = "Cancel",
+    ["tool.duct.rope"] = "Draw the hose / duct pipe",
+    ["tool.duct.undone"] = "Undone Gas Duct",
+    ["tool.duct.help1"] = "Canister -> hose: LMB on the canister, then LMB where the nozzle should be. Open the valve (E) - gas flows out of the nozzle.",
+    ["tool.duct.help2"] = "Duct: LMB on a wall/floor places the intake vent, second LMB places the exhaust vent. Press E on a vent to start pumping: the intake sucks gas in front of its grille and the exhaust blows the same gas out.",
+    ["tool.duct.hint_cyl"] = "Cylinder selected: click where the hose nozzle goes",
+    ["tool.duct.hint_intake"] = "Intake vent placed: click where the exhaust vent goes",
+    ["tool.duct.hint_intake_sel"] = "Intake selected: click where the exhaust vent goes",
+    ["tool.duct.hint_hose"] = "Hose connected: press E on the cylinder or the nozzle to open the valve",
+    ["tool.duct.hint_duct"] = "Duct connected: press E on a vent to start pumping",
+    ["tool.emitter.name"] = "Gas Emitter",
+    ["tool.emitter.desc"] = "Place gas emitters or release puffs of gas",
+    ["tool.emitter.left"] = "Place emitter (E on it toggles)",
+    ["tool.emitter.right"] = "One-shot release at the aimed point",
+    ["tool.emitter.reload"] = "Remove all gas (superadmin)",
+    ["tool.emitter.undone"] = "Undone Gas Emitter",
+    ["tool.emitter.cleanup"] = "Gas Emitters",
+    ["tool.emitter.cleaned"] = "Cleaned up all Gas Emitters",
+    ["tool.emitter.gas"] = "Gas",
+    ["tool.emitter.rate"] = "Release rate",
+    ["tool.emitter.duration"] = "One-shot duration (s)",
+    ["tool.valve.name"] = "Valve Group",
+    ["tool.valve.desc"] = "Link cylinders, emitters, fans and vents to one key and open them all at once",
+    ["tool.valve.left"] = "Link the device to the selected key",
+    ["tool.valve.right"] = "Unlink the device",
+    ["tool.valve.reload"] = "Toggle every Aether device within the radius",
+    ["tool.valve.key"] = "Toggle key",
+    ["tool.valve.radius"] = "Reload radius",
+    ["tool.valve.help"] = "LMB on cylinders / emitters / fans / vents links them to the key. Press the key to open or close all of them at once. R toggles everything in the radius. With Wiremod: each device also has inputs On/Open, Toggle, Rate, Detonate and outputs On, GasAmount, IsPunctured, Leaks.",
+    ["tool.valve.toggled"] = "Toggled %d Aether devices",
+}
+
+Lang.ru = {
+    ["lang.name"] = "Русский",
+    ["lang.auto"] = "Авто (язык игры)",
+
+    ["menu.title"] = "Aether - объёмный дым и динамика газов v%s",
+    ["menu.language"] = "Язык",
+    ["menu.client"] = "Клиент",
+    ["menu.draw"] = "Рисовать облака газа",
+    ["menu.effects"] = "Экранные эффекты (кашель, искажение, туман)",
+    ["menu.draw_distance"] = "Дальность прорисовки",
+    ["menu.mesh_budget"] = "Бюджет перестройки мешей (мс/кадр)",
+    ["menu.mask_toggle"] = "Противогаз: надеть / снять  (E+R, !mask)",
+    ["menu.mask_drop"] = "Противогаз: выбросить",
+    ["menu.suit_drop"] = "Костюм химзащиты: снять  (E+Alt, !suit)",
+    ["menu.protection"] = "Противогаз защищает дыхание, костюм химзащиты - кожу. От зарина и иприта нужны оба.",
+    ["menu.analyzer"] = "Газоанализатор (ПКМ с анализатором переключает экран / HUD)",
+    ["menu.an_screen"] = "Живой экран на приборе",
+    ["menu.an_hud"] = "Панель HUD",
+    ["menu.an_beep"] = "Звуковой сигнал",
+    ["menu.an_marker"] = "Метка удалённого замера",
+    ["menu.sprayer"] = "Газомёт (ПКМ с газомётом открывает это же меню)",
+    ["menu.sprayer_open"] = "Настройки газомёта и редактор своих газов",
+    ["menu.server_admin"] = "Сервер (суперадмин)",
+    ["menu.server_noadmin"] = "Настройки сервера: только суперадмин",
+    ["menu.enabled"] = "Симуляция включена",
+    ["menu.voxel"] = "Размер вокселя (детализация)",
+    ["menu.voxel_help"] = "Меньше - точнее растекание, но дороже для процессора: число ячеек растёт как 1/размер^3 (32 - вдвое больше ячеек, чем 40; 64 - вчетверо меньше). Смена размера очищает весь газ.",
+    ["menu.max_chunks"] = "Максимум активных чанков",
+    ["menu.tick_budget"] = "Бюджет решателя (мс/тик)",
+    ["menu.probe_budget"] = "Бюджет проверки коллизий (трасс/тик)",
+    ["menu.grates"] = "Решётки задерживают газ",
+    ["menu.damage_scale"] = "Множитель урона",
+    ["menu.npc_blind"] = "Дым ослепляет NPC / NextBot",
+    ["menu.mask_filter"] = "Фильтр противогаза (с)",
+    ["menu.wind_speed"] = "Скорость ветра",
+    ["menu.wind_yaw"] = "Направление ветра (градусы)",
+    ["menu.stormfox"] = "Ветер из StormFox 2",
+    ["menu.sync"] = "Интервал синхронизации клиентов (с)",
+    ["menu.tunnel"] = "Пули пробивают дым (сила просвета)",
+    ["menu.tunnel_help"] = "Сколько газа пуля выбивает на своём пути. 0 - пули дым не режут.",
+    ["menu.fire_smoke"] = "Дым от огня",
+    ["menu.fire_smoke_help"] = "vFire, env_fire (Fire Tool) и горящие пропы дымят. 0 - огонь не дымит.",
+    ["menu.fire_vfire"] = "Взрывы газа разбрасывают vFire",
+    ["menu.vfire_wind"] = "Пламя vFire клонится по ветру Aether",
+    ["menu.custom_everyone"] = "Свои газы могут менять все",
+    ["menu.toxic_admin"] = "Ядовитые и горючие газы распыляют только админы",
+    ["menu.clear"] = "Убрать весь газ",
+    ["menu.settings"] = "Настройки",
+
+    ["editor.title"] = "Aether - газомёт",
+    ["editor.gas"] = "Какой газ распылять",
+    ["editor.mode"] = "Режим",
+    ["editor.mode_aim"] = "Облако в точке прицела",
+    ["editor.mode_jet"] = "Струя из сопла",
+    ["editor.sprayer"] = "Газомёт",
+    ["editor.rate"] = "Расход (в секунду)",
+    ["editor.distance"] = "Дальность",
+    ["editor.radius"] = "Радиус облака (воксели)",
+    ["editor.jet_speed"] = "Скорость струи",
+    ["editor.temp"] = "Температура (-200 = как у газа)",
+    ["editor.help"] = "ЛКМ - распылять, R - убрать газ под прицелом. Газы со звёздочкой * - свои: настройте их справа, нажмите «Применить» и выберите здесь.",
+    ["editor.start_from"] = "Взять за основу газ...",
+    ["editor.edit_slot"] = "Править: %s",
+    ["editor.custom_prefix"] = "Свой: %s",
+    ["editor.damage_type"] = "Тип урона: %s",
+    ["editor.apply"] = "Применить",
+    ["editor.apply_spray"] = "Применить и распылять",
+    ["dmg.toxic"] = "отравление", ["dmg.burn"] = "ожог", ["dmg.asphyxia"] = "удушье", ["dmg.acid"] = "кислота",
+
+    ["field.printName"] = "Название",
+    ["field.color"] = "Цвет",
+    ["field.density"] = "Плотность (воздух = 1)",
+    ["field.emitTemp"] = "Температура у источника, C",
+    ["field.cooling"] = "Скорость остывания, 1/с",
+    ["field.opacity"] = "Непрозрачность",
+    ["field.fogDistance"] = "Видимость внутри облака (0 = без тумана)",
+    ["field.blocksVision"] = "Закрывает обзор (игроки, NPC)",
+    ["field.visionThreshold"] = "Концентрация, закрывающая обзор",
+    ["field.diffusion"] = "Диффузия",
+    ["field.spread"] = "Растекание давлением (заполнение комнаты)",
+    ["field.cohesion"] = "Сцепление (чёткий край облака)",
+    ["field.decay"] = "Рассеивание, 1/с",
+    ["field.muffle"] = "Глушение звука",
+    ["field.damage"] = "Урон, HP/с при полной концентрации",
+    ["field.damageKind"] = "Тип урона",
+    ["field.damageThreshold"] = "Без урона ниже концентрации",
+    ["field.maskProtects"] = "Противогаз защищает",
+    ["field.skinDamage"] = "Действие через кожу (эту часть снимает только костюм)",
+    ["field.slowdown"] = "Замедление движения",
+    ["field.clearance"] = "Время выведения из организма, с",
+    ["field.linger"] = "Затяжное действие (доля вреда от дозы)",
+    ["field.deposit"] = "Оседает на полу и коже (заражение)",
+    ["field.jtCooling"] = "Охлаждение при выпуске из баллона, C",
+    ["field.flammable"] = "Горючий / взрывоопасный",
+    ["field.flameMin"] = "Нижний предел воспламенения",
+    ["field.flameMax"] = "Верхний предел воспламенения",
+    ["field.blastDamage"] = "Урон взрыва на воксель",
+    ["field.igniteOnBlast"] = "Взрыв поджигает",
+    ["field.extinguishes"] = "Тушит огонь",
+    ["field.screen.cough"] = "Экран: кашель",
+    ["field.screen.distortion"] = "Экран: искажение",
+    ["field.screen.blur"] = "Экран: слёзы / размытие",
+    ["field.screen.narrow"] = "Экран: туннельное зрение",
+    ["field.screen.darken"] = "Экран: потемнение от гипоксии",
+    ["field.screen.fog"] = "Экран: запотевание",
+    ["field.screen.shake"] = "Экран: судороги",
+
+    ["gas.smoke"] = "Тактический дым",
+    ["gas.chlorine"] = "Хлор",
+    ["gas.methane"] = "Метан",
+    ["gas.co_smoke"] = "Дым пожара (CO)",
+    ["gas.steam"] = "Пар",
+    ["gas.tear_gas"] = "Слезоточивый газ (CS)",
+    ["gas.sarin"] = "Зарин (GB)",
+    ["gas.mustard"] = "Иприт (HD)",
+    ["gas.h2s"] = "Сероводород",
+    ["gas.ammonia"] = "Аммиак",
+    ["gas.hydrogen"] = "Водород",
+    ["gas.nitrogen"] = "Криогенный азотный туман",
+    ["gas.co2"] = "Углекислый газ",
+    ["gas.signal_red"] = "Сигнальный дым (красный)",
+    ["gas.signal_green"] = "Сигнальный дым (зелёный)",
+    ["gas.signal_yellow"] = "Сигнальный дым (жёлтый)",
+    ["gas.signal_violet"] = "Сигнальный дым (фиолетовый)",
+    ["gas.signal_orange"] = "Сигнальный дым (оранжевый)",
+    ["gas.tobacco_smoke"] = "Табачный дым",
+
+    ["hud.contam"] = "ЗАРАЖЕНИЕ (%s)",
+    ["hud.suit_on"] = "КОСТЮМ ХИМЗАЩИТЫ НАДЕТ   (E+Alt или !suit - снять)",
+    ["hud.mask_on"] = "ПРОТИВОГАЗ НАДЕТ  (!mask или E+R - снять)",
+    ["hud.mask_off"] = "ПРОТИВОГАЗ СНЯТ  (!mask или E+R - надеть)",
+    ["hud.spare"] = "   запасных фильтров: %d",
+    ["hud.gun"] = "%s   %.1f/с   %s   [ПКМ] настройки  [R] убрать газ",
+    ["hud.gun_jet"] = "струя",
+    ["hud.gun_aim"] = "в прицел",
+    ["hud.grenade"] = "Газ: %s",
+    ["hud.grenade_switch"] = "   [R] сменить",
+    ["hud.an_title"] = "ГАЗОАНАЛИЗАТОР AETHER",
+    ["hud.an_remote"] = "замер: удалённый [ЛКМ]   экран [ПКМ]",
+    ["hud.an_local"] = "замер: зона дыхания [ЛКМ]   экран [ПКМ]",
+    ["hud.an_gas"] = "Газ:   %s",
+    ["hud.an_conc"] = "Конц.:  %5.1f %%    Темп.: %4.0f C",
+    ["hud.an_mode"] = "Анализатор: %s",
+    ["hud.an_both"] = "экран прибора + HUD",
+    ["hud.an_screen"] = "только экран прибора",
+    ["hud.an_hudonly"] = "только HUD",
+
+    ["hint.mask_pocket"] = "Противогаз убран в карман: снимите маску %s, затем введите !mask",
+    ["hint.mask_on"] = "Противогаз надет. Снять / надеть: !mask в чат (или зажать E и нажать R)",
+    ["hint.mask_already"] = "На вас уже противогаз %s. Сначала снимите его.",
+    ["hint.another_mod"] = "другого мода",
+    ["hint.suit_on"] = "Костюм химзащиты надет: он защищает только кожу - наденьте и противогаз. Снять: зажать E и нажать Alt, или !suit",
+    ["hint.suit_already"] = "Костюм химзащиты уже надет.",
+    ["hint.need_mask"] = "Фильтр без противогаза не использовать.",
+    ["hint.filters_full"] = "Больше запасных фильтров не унести.",
+    ["hint.mask_to_pocket"] = "Противогаз Aether убран в карман: надета маска другого мода.",
+    ["hint.custom_admin"] = "На этом сервере свои газы меняют только админы.",
+    ["hint.filter_swapped"] = "Вкручен более свежий фильтр из этой маски.",
+    ["hint.gun_admin"] = "На этом сервере ядовитые и горючие газы распыляют только админы.",
+
+    ["tool.duct.name"] = "Газовод / шланг",
+    ["tool.duct.desc"] = "Соединить баллон со шлангом или приточную решётку с вытяжной",
+    ["tool.duct.left"] = "Выбрать баллон или поставить / выбрать приточную решётку",
+    ["tool.duct.left_1"] = "Поставить сопло шланга / вытяжную решётку",
+    ["tool.duct.right"] = "Отсоединить шланг или газовод у объекта под прицелом",
+    ["tool.duct.reload"] = "Отмена",
+    ["tool.duct.rope"] = "Рисовать шланг / трубу",
+    ["tool.duct.undone"] = "Газовод отменён",
+    ["tool.duct.help1"] = "Баллон -> шланг: ЛКМ по баллону, затем ЛКМ туда, где будет сопло. Откройте вентиль (E) - газ пойдёт из сопла.",
+    ["tool.duct.help2"] = "Газовод: ЛКМ по стене/полу ставит приточную решётку, второй ЛКМ - вытяжную. E по решётке включает перекачку: приточная втягивает газ перед собой, вытяжная выдувает его.",
+    ["tool.duct.hint_cyl"] = "Баллон выбран: кликните, где будет сопло шланга",
+    ["tool.duct.hint_intake"] = "Приточная решётка стоит: кликните, где будет вытяжная",
+    ["tool.duct.hint_intake_sel"] = "Приточная решётка выбрана: кликните, где будет вытяжная",
+    ["tool.duct.hint_hose"] = "Шланг подключён: E по баллону или соплу открывает вентиль",
+    ["tool.duct.hint_duct"] = "Газовод подключён: E по решётке включает перекачку",
+    ["tool.emitter.name"] = "Эмиттер газа",
+    ["tool.emitter.desc"] = "Ставить эмиттеры газа или выпускать облака",
+    ["tool.emitter.left"] = "Поставить эмиттер (E по нему - вкл/выкл)",
+    ["tool.emitter.right"] = "Разовый выпуск в точке прицела",
+    ["tool.emitter.reload"] = "Убрать весь газ (суперадмин)",
+    ["tool.emitter.undone"] = "Эмиттер газа отменён",
+    ["tool.emitter.cleanup"] = "Эмиттеры газа",
+    ["tool.emitter.cleaned"] = "Все эмиттеры газа убраны",
+    ["tool.emitter.gas"] = "Газ",
+    ["tool.emitter.rate"] = "Скорость выпуска",
+    ["tool.emitter.duration"] = "Длительность разового выпуска (с)",
+    ["tool.valve.name"] = "Группа вентилей",
+    ["tool.valve.desc"] = "Привязать баллоны, эмиттеры, вентиляторы и решётки к одной клавише и открывать разом",
+    ["tool.valve.left"] = "Привязать устройство к выбранной клавише",
+    ["tool.valve.right"] = "Отвязать устройство",
+    ["tool.valve.reload"] = "Переключить все устройства Aether в радиусе",
+    ["tool.valve.key"] = "Клавиша",
+    ["tool.valve.radius"] = "Радиус для R",
+    ["tool.valve.help"] = "ЛКМ по баллонам / эмиттерам / вентиляторам / решёткам привязывает их к клавише. Нажатие клавиши открывает или закрывает все сразу. R переключает всё в радиусе. С Wiremod у каждого устройства есть входы On/Open, Toggle, Rate, Detonate и выходы On, GasAmount, IsPunctured, Leaks.",
+    ["tool.valve.toggled"] = "Переключено устройств Aether: %d",
+}
+
+Lang.uk = {
+    ["lang.name"] = "Українська",
+    ["lang.auto"] = "Авто (мова гри)",
+
+    ["menu.title"] = "Aether - об'ємний дим і динаміка газів v%s",
+    ["menu.language"] = "Мова",
+    ["menu.client"] = "Клієнт",
+    ["menu.draw"] = "Малювати хмари газу",
+    ["menu.effects"] = "Екранні ефекти (кашель, спотворення, туман)",
+    ["menu.draw_distance"] = "Дальність промальовування",
+    ["menu.mesh_budget"] = "Бюджет перебудови мешів (мс/кадр)",
+    ["menu.mask_toggle"] = "Протигаз: надягти / зняти  (E+R, !mask)",
+    ["menu.mask_drop"] = "Протигаз: викинути",
+    ["menu.suit_drop"] = "Костюм хімзахисту: зняти  (E+Alt, !suit)",
+    ["menu.protection"] = "Протигаз захищає дихання, костюм хімзахисту - шкіру. Від зарину та іприту потрібні обидва.",
+    ["menu.analyzer"] = "Газоаналізатор (ПКМ з аналізатором перемикає екран / HUD)",
+    ["menu.an_screen"] = "Живий екран на приладі",
+    ["menu.an_hud"] = "Панель HUD",
+    ["menu.an_beep"] = "Звуковий сигнал",
+    ["menu.an_marker"] = "Мітка віддаленого виміру",
+    ["menu.sprayer"] = "Газомет (ПКМ з газометом відкриває це ж меню)",
+    ["menu.sprayer_open"] = "Налаштування газомета та редактор своїх газів",
+    ["menu.server_admin"] = "Сервер (суперадмін)",
+    ["menu.server_noadmin"] = "Налаштування сервера: лише суперадмін",
+    ["menu.enabled"] = "Симуляцію ввімкнено",
+    ["menu.voxel"] = "Розмір вокселя (деталізація)",
+    ["menu.voxel_help"] = "Менше - точніше розтікання, але дорожче для процесора: кількість клітинок росте як 1/розмір^3 (32 - удвічі більше клітинок, ніж 40; 64 - учетверо менше). Зміна розміру очищає весь газ.",
+    ["menu.max_chunks"] = "Максимум активних чанків",
+    ["menu.tick_budget"] = "Бюджет розв'язувача (мс/тік)",
+    ["menu.probe_budget"] = "Бюджет перевірки колізій (трас/тік)",
+    ["menu.grates"] = "Ґрати затримують газ",
+    ["menu.damage_scale"] = "Множник шкоди",
+    ["menu.npc_blind"] = "Дим засліплює NPC / NextBot",
+    ["menu.mask_filter"] = "Фільтр протигаза (с)",
+    ["menu.wind_speed"] = "Швидкість вітру",
+    ["menu.wind_yaw"] = "Напрямок вітру (градуси)",
+    ["menu.stormfox"] = "Вітер зі StormFox 2",
+    ["menu.sync"] = "Інтервал синхронізації клієнтів (с)",
+    ["menu.tunnel"] = "Кулі пробивають дим (сила просвіту)",
+    ["menu.tunnel_help"] = "Скільки газу куля вибиває на своєму шляху. 0 - кулі дим не ріжуть.",
+    ["menu.fire_smoke"] = "Дим від вогню",
+    ["menu.fire_smoke_help"] = "vFire, env_fire (Fire Tool) і палаючі пропи димлять. 0 - вогонь не димить.",
+    ["menu.fire_vfire"] = "Вибухи газу розкидають vFire",
+    ["menu.vfire_wind"] = "Полум'я vFire хилиться за вітром Aether",
+    ["menu.custom_everyone"] = "Свої гази можуть змінювати всі",
+    ["menu.toxic_admin"] = "Отруйні та горючі гази розпилюють лише адміни",
+    ["menu.clear"] = "Прибрати весь газ",
+    ["menu.settings"] = "Налаштування",
+
+    ["editor.title"] = "Aether - газомет",
+    ["editor.gas"] = "Який газ розпилювати",
+    ["editor.mode"] = "Режим",
+    ["editor.mode_aim"] = "Хмара в точці прицілу",
+    ["editor.mode_jet"] = "Струмінь із сопла",
+    ["editor.sprayer"] = "Газомет",
+    ["editor.rate"] = "Витрата (за секунду)",
+    ["editor.distance"] = "Дальність",
+    ["editor.radius"] = "Радіус хмари (вокселі)",
+    ["editor.jet_speed"] = "Швидкість струменя",
+    ["editor.temp"] = "Температура (-200 = як у газу)",
+    ["editor.help"] = "ЛКМ - розпилювати, R - прибрати газ під прицілом. Гази із зірочкою * - свої: налаштуйте їх праворуч, натисніть «Застосувати» й виберіть тут.",
+    ["editor.start_from"] = "Узяти за основу газ...",
+    ["editor.edit_slot"] = "Редагувати: %s",
+    ["editor.custom_prefix"] = "Свій: %s",
+    ["editor.damage_type"] = "Тип шкоди: %s",
+    ["editor.apply"] = "Застосувати",
+    ["editor.apply_spray"] = "Застосувати й розпилювати",
+    ["dmg.toxic"] = "отруєння", ["dmg.burn"] = "опік", ["dmg.asphyxia"] = "задуха", ["dmg.acid"] = "кислота",
+
+    ["field.printName"] = "Назва",
+    ["field.color"] = "Колір",
+    ["field.density"] = "Густина (повітря = 1)",
+    ["field.emitTemp"] = "Температура біля джерела, C",
+    ["field.cooling"] = "Швидкість охолодження, 1/с",
+    ["field.opacity"] = "Непрозорість",
+    ["field.fogDistance"] = "Видимість усередині хмари (0 = без туману)",
+    ["field.blocksVision"] = "Закриває огляд (гравці, NPC)",
+    ["field.visionThreshold"] = "Концентрація, що закриває огляд",
+    ["field.diffusion"] = "Дифузія",
+    ["field.spread"] = "Розтікання тиском (заповнення кімнати)",
+    ["field.cohesion"] = "Зчеплення (чіткий край хмари)",
+    ["field.decay"] = "Розсіювання, 1/с",
+    ["field.muffle"] = "Приглушення звуку",
+    ["field.damage"] = "Шкода, HP/с за повної концентрації",
+    ["field.damageKind"] = "Тип шкоди",
+    ["field.damageThreshold"] = "Без шкоди нижче концентрації",
+    ["field.maskProtects"] = "Протигаз захищає",
+    ["field.skinDamage"] = "Дія через шкіру (цю частину знімає лише костюм)",
+    ["field.slowdown"] = "Уповільнення руху",
+    ["field.clearance"] = "Час виведення з організму, с",
+    ["field.linger"] = "Тривала дія (частка шкоди від дози)",
+    ["field.deposit"] = "Осідає на підлозі та шкірі (зараження)",
+    ["field.jtCooling"] = "Охолодження при випуску з балона, C",
+    ["field.flammable"] = "Горючий / вибухонебезпечний",
+    ["field.flameMin"] = "Нижня межа займання",
+    ["field.flameMax"] = "Верхня межа займання",
+    ["field.blastDamage"] = "Шкода вибуху на воксель",
+    ["field.igniteOnBlast"] = "Вибух підпалює",
+    ["field.extinguishes"] = "Гасить вогонь",
+    ["field.screen.cough"] = "Екран: кашель",
+    ["field.screen.distortion"] = "Екран: спотворення",
+    ["field.screen.blur"] = "Екран: сльози / розмиття",
+    ["field.screen.narrow"] = "Екран: тунельний зір",
+    ["field.screen.darken"] = "Екран: потемніння від гіпоксії",
+    ["field.screen.fog"] = "Екран: запотівання",
+    ["field.screen.shake"] = "Екран: судоми",
+
+    ["gas.smoke"] = "Тактичний дим",
+    ["gas.chlorine"] = "Хлор",
+    ["gas.methane"] = "Метан",
+    ["gas.co_smoke"] = "Дим пожежі (CO)",
+    ["gas.steam"] = "Пара",
+    ["gas.tear_gas"] = "Сльозогінний газ (CS)",
+    ["gas.sarin"] = "Зарин (GB)",
+    ["gas.mustard"] = "Іприт (HD)",
+    ["gas.h2s"] = "Сірководень",
+    ["gas.ammonia"] = "Аміак",
+    ["gas.hydrogen"] = "Водень",
+    ["gas.nitrogen"] = "Кріогенний азотний туман",
+    ["gas.co2"] = "Вуглекислий газ",
+    ["gas.signal_red"] = "Сигнальний дим (червоний)",
+    ["gas.signal_green"] = "Сигнальний дим (зелений)",
+    ["gas.signal_yellow"] = "Сигнальний дим (жовтий)",
+    ["gas.signal_violet"] = "Сигнальний дим (фіолетовий)",
+    ["gas.signal_orange"] = "Сигнальний дим (помаранчевий)",
+    ["gas.tobacco_smoke"] = "Тютюновий дим",
+
+    ["hud.contam"] = "ЗАРАЖЕННЯ (%s)",
+    ["hud.suit_on"] = "КОСТЮМ ХІМЗАХИСТУ ВДЯГНЕНО   (E+Alt або !suit - зняти)",
+    ["hud.mask_on"] = "ПРОТИГАЗ ВДЯГНЕНО  (!mask або E+R - зняти)",
+    ["hud.mask_off"] = "ПРОТИГАЗ ЗНЯТО  (!mask або E+R - надягти)",
+    ["hud.spare"] = "   запасних фільтрів: %d",
+    ["hud.gun"] = "%s   %.1f/с   %s   [ПКМ] налаштування  [R] прибрати газ",
+    ["hud.gun_jet"] = "струмінь",
+    ["hud.gun_aim"] = "у приціл",
+    ["hud.grenade"] = "Газ: %s",
+    ["hud.grenade_switch"] = "   [R] змінити",
+    ["hud.an_title"] = "ГАЗОАНАЛІЗАТОР AETHER",
+    ["hud.an_remote"] = "вимір: віддалений [ЛКМ]   екран [ПКМ]",
+    ["hud.an_local"] = "вимір: зона дихання [ЛКМ]   екран [ПКМ]",
+    ["hud.an_gas"] = "Газ:   %s",
+    ["hud.an_conc"] = "Конц.:  %5.1f %%    Темп.: %4.0f C",
+    ["hud.an_mode"] = "Аналізатор: %s",
+    ["hud.an_both"] = "екран приладу + HUD",
+    ["hud.an_screen"] = "лише екран приладу",
+    ["hud.an_hudonly"] = "лише HUD",
+
+    ["hint.mask_pocket"] = "Протигаз сховано в кишеню: зніміть маску %s, потім введіть !mask",
+    ["hint.mask_on"] = "Протигаз вдягнено. Зняти / надягти: !mask у чат (або затиснути E і натиснути R)",
+    ["hint.mask_already"] = "На вас уже протигаз %s. Спершу зніміть його.",
+    ["hint.another_mod"] = "іншого мода",
+    ["hint.suit_on"] = "Костюм хімзахисту вдягнено: він захищає лише шкіру - надягніть і протигаз. Зняти: затиснути E і натиснути Alt, або !suit",
+    ["hint.suit_already"] = "Костюм хімзахисту вже вдягнено.",
+    ["hint.need_mask"] = "Фільтр без протигаза не використати.",
+    ["hint.filters_full"] = "Більше запасних фільтрів не забрати.",
+    ["hint.mask_to_pocket"] = "Протигаз Aether сховано в кишеню: вдягнено маску іншого мода.",
+    ["hint.custom_admin"] = "На цьому сервері свої гази змінюють лише адміни.",
+    ["hint.filter_swapped"] = "Вкручено свіжіший фільтр із цієї маски.",
+    ["hint.gun_admin"] = "На цьому сервері отруйні та горючі гази розпилюють лише адміни.",
+
+    ["tool.duct.name"] = "Газовід / шланг",
+    ["tool.duct.desc"] = "З'єднати балон зі шлангом або припливну решітку з витяжною",
+    ["tool.duct.left"] = "Вибрати балон або поставити / вибрати припливну решітку",
+    ["tool.duct.left_1"] = "Поставити сопло шланга / витяжну решітку",
+    ["tool.duct.right"] = "Від'єднати шланг або газовід в об'єкта під прицілом",
+    ["tool.duct.reload"] = "Скасувати",
+    ["tool.duct.rope"] = "Малювати шланг / трубу",
+    ["tool.duct.undone"] = "Газовід скасовано",
+    ["tool.duct.help1"] = "Балон -> шланг: ЛКМ по балону, потім ЛКМ туди, де буде сопло. Відкрийте вентиль (E) - газ піде із сопла.",
+    ["tool.duct.help2"] = "Газовід: ЛКМ по стіні/підлозі ставить припливну решітку, другий ЛКМ - витяжну. E по решітці вмикає перекачування: припливна втягує газ перед собою, витяжна видуває його.",
+    ["tool.duct.hint_cyl"] = "Балон вибрано: клацніть, де буде сопло шланга",
+    ["tool.duct.hint_intake"] = "Припливну решітку поставлено: клацніть, де буде витяжна",
+    ["tool.duct.hint_intake_sel"] = "Припливну решітку вибрано: клацніть, де буде витяжна",
+    ["tool.duct.hint_hose"] = "Шланг під'єднано: E по балону або соплу відкриває вентиль",
+    ["tool.duct.hint_duct"] = "Газовід під'єднано: E по решітці вмикає перекачування",
+    ["tool.emitter.name"] = "Емітер газу",
+    ["tool.emitter.desc"] = "Ставити емітери газу або випускати хмари",
+    ["tool.emitter.left"] = "Поставити емітер (E по ньому - увімк/вимк)",
+    ["tool.emitter.right"] = "Разовий випуск у точці прицілу",
+    ["tool.emitter.reload"] = "Прибрати весь газ (суперадмін)",
+    ["tool.emitter.undone"] = "Емітер газу скасовано",
+    ["tool.emitter.cleanup"] = "Емітери газу",
+    ["tool.emitter.cleaned"] = "Усі емітери газу прибрано",
+    ["tool.emitter.gas"] = "Газ",
+    ["tool.emitter.rate"] = "Швидкість випуску",
+    ["tool.emitter.duration"] = "Тривалість разового випуску (с)",
+    ["tool.valve.name"] = "Група вентилів",
+    ["tool.valve.desc"] = "Прив'язати балони, емітери, вентилятори й решітки до однієї клавіші та відкривати разом",
+    ["tool.valve.left"] = "Прив'язати пристрій до вибраної клавіші",
+    ["tool.valve.right"] = "Відв'язати пристрій",
+    ["tool.valve.reload"] = "Перемкнути всі пристрої Aether у радіусі",
+    ["tool.valve.key"] = "Клавіша",
+    ["tool.valve.radius"] = "Радіус для R",
+    ["tool.valve.help"] = "ЛКМ по балонах / емітерах / вентиляторах / решітках прив'язує їх до клавіші. Натискання клавіші відкриває або закриває всі одразу. R перемикає все в радіусі. З Wiremod кожен пристрій має входи On/Open, Toggle, Rate, Detonate і виходи On, GasAmount, IsPunctured, Leaks.",
+    ["tool.valve.toggled"] = "Перемкнено пристроїв Aether: %d",
+}
+
+AetherGas.Languages = { "en", "ru", "uk" }
+
+local cvLang = CLIENT and CreateClientConVar("aether_language", "auto", true, false,
+    "Aether: interface language - auto, en, ru, uk") or nil
+
+--- Код текущего языка: en / ru / uk (на сервере — всегда en).
+function AetherGas.LangCode()
+    if not cvLang then return "en" end
+    local v = cvLang:GetString()
+    if Lang[v] then return v end
+    local game = GetConVar("gmod_language")
+    local g = game and game:GetString() or "en"
+    return Lang[g] and g or "en"
+end
+
+local function Raw(key)
+    local t = Lang[AetherGas.LangCode()]
+    return t and t[key] or Lang.en[key]
+end
+
+--- Строка интерфейса. Аргументы подставляются через string.format; без перевода — ключ.
+function AetherGas.L(key, ...)
+    local s = Raw(key) or key
+    if select("#", ...) > 0 then
+        local ok, out = pcall(string.format, s, ...)
+        if ok then return out end
+    end
+    return s
+end
+
+--- Есть ли строка с таким ключом (для необязательных переводов).
+function AetherGas.HasL(key) return Raw(key) ~= nil end
+
+--- Имя газа на языке игрока; свои газы (custom_*) — имя, которое задал игрок.
+function AetherGas.GasName(def)
+    if not def then return "" end
+    if def.custom then return def.printName end
+    return Raw("gas." .. def.name) or def.printName
+end
+
+-- Подписчики на смену языка: [id] = fn
+AetherGas.LangListeners = AetherGas.LangListeners or {}
+
+function AetherGas.OnLanguage(id, fn)
+    AetherGas.LangListeners[id] = fn
+    if CLIENT then fn() end
+end
+
+if SERVER then
+    --- Сообщение игроку на его языке. mode: 0 — чат, 1 — чат и всплывающая подсказка, 2 — только подсказка.
+    -- Аргументы — строки; «@ключ» тоже переводится на клиенте.
+    function AetherGas.Notify(ply, mode, key, ...)
+        if not IsValid(ply) or not ply:IsPlayer() then return end
+        local n = select("#", ...)
+        net.Start(AetherGas.Const.NET_NOTIFY)
+        net.WriteUInt(mode, 2)
+        net.WriteString(key)
+        net.WriteUInt(n, 3)
+        for i = 1, n do net.WriteString(tostring((select(i, ...)))) end
+        net.Send(ply)
+    end
+end
+
+if CLIENT then
+    local args = {}
+    net.Receive(AetherGas.Const.NET_NOTIFY, function()
+        local mode, key, n = net.ReadUInt(2), net.ReadString(), net.ReadUInt(3)
+        for i = 1, n do
+            local a = net.ReadString()
+            if string.sub(a, 1, 1) == "@" then a = AetherGas.L(string.sub(a, 2)) end
+            args[i] = a
+        end
+        local text = AetherGas.L(key, unpack(args, 1, n))
+        for i = 1, n do args[i] = nil end
+        if mode ~= 2 then chat.AddText(Color(120, 200, 255), "[Aether] ", color_white, text) end
+        if mode ~= 0 then
+            notification.AddLegacy(text, NOTIFY_HINT, 6)
+            surface.PlaySound("ambient/water/drip" .. math.random(1, 4) .. ".wav")
+        end
+    end)
+
+    local function Changed()
+        for _, fn in pairs(AetherGas.LangListeners) do
+            local ok, err = pcall(fn)
+            if not ok then ErrorNoHalt("[Aether] language listener: " .. tostring(err) .. "\n") end
+        end
+        -- подписи тулганов и меню Q строятся один раз при создании spawnmenu — пересобрать его
+        timer.Create("AetherGas.Lang.Reload", 0.2, 1, function() RunConsoleCommand("spawnmenu_reload") end)
+    end
+    cvars.AddChangeCallback("aether_language", Changed, "AetherGas.Lang")
+    cvars.AddChangeCallback("gmod_language", function()
+        if cvLang:GetString() == "auto" then Changed() end
+    end, "AetherGas.Lang")
+end

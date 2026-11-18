@@ -11,6 +11,8 @@
 import math
 
 MAX_CONC, EPS, OVERWRITE, MAX_K, FLOW_CAP, BUOY_RATE, VEL_DAMP = 3.0, 0.003, 0.02, 0.15, 0.45, 1.2, 2.5
+OFFGAS_RATE = 0.012
+DEPOSIT = {"chlorine": 0.004}   # доля/с, оседающая на пол (sh_registry deposit)
 COH_LEAK, PRESS_RATE, PRESS_ACCEL, SPILL_SPEED = 0.008, 1.6, 260.0, 120.0
 S = 40.0  # размер вокселя
 AMB, KELVIN = 20.0, 273.15
@@ -30,6 +32,7 @@ class World:
         self.t = {k: AMB for k in cells}
         self.v = {k: [0.0, 0.0, 0.0] for k in cells}
         self.order = sorted(cells)
+        self.dep = {k: 0.0 for k in cells}
 
     def fill(self, k, amount, temp, vel):
         cur = self.c[k]
@@ -56,7 +59,14 @@ class World:
 
     def step(self, gas, dt, forward):
         dens, diff, spread, emitT, cool, coh = GASES[gas]
+        dr = DEPOSIT.get(gas, 0.0)
         for key in (self.order if forward else self.order[::-1]):
+            d0 = self.dep[key]
+            if d0 > 0:   # испарение осадка обратно в ячейку
+                amt = d0 if d0 < 0.004 else d0 * OFFGAS_RATE * dt
+                put = self.fill(key, amt, AMB, (0, 0, 0))
+                if put > 0 or d0 < 0.004:
+                    self.dep[key] = d0 - (d0 if d0 < 0.004 else put)
             c = self.c[key]
             if c <= 0:
                 continue
@@ -99,6 +109,11 @@ class World:
                 flow = min(flow, rem * FLOW_CAP)
                 if flow > 1e-5:
                     rem -= self.fill(n, flow, T, vel)
+            below = (key[0], key[1], key[2] - 1)
+            if dr > 0 and below not in self.c:   # под ячейкой пол — оседание
+                d = rem * dr * dt
+                rem -= d
+                self.dep[key] += d
             self.c[key] = rem
             self.t[key] = T + (AMB - T) * min(1, cool * dt)
             damp = max(0.0, 1 - VEL_DAMP * dt)
@@ -106,7 +121,7 @@ class World:
 
     def check(self, injected):
         vals = list(self.c.values())
-        mass = sum(vals)
+        mass = sum(vals) + sum(self.dep.values())
         assert all(v >= 0 and not math.isnan(v) for v in vals), "отрицательная/NaN концентрация"
         assert all(not math.isnan(x) for v in self.v.values() for x in v), "NaN в скорости"
         assert abs(mass - injected) < 1e-6 * max(1, injected), f"масса не сохранилась: {mass} vs {injected}"

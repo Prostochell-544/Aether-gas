@@ -36,6 +36,10 @@ AetherGas.CustomGasFields = {
     { "maskProtects",     "bool", 0, 1,    "Gas mask protects" },
     { "skinDamage",       "num",  0,    1,    "Skin damage (mask does not stop this part)", 2 },
     { "slowdown",         "num",  0,    0.9,  "Movement slowdown", 2 },
+    { "clearance",        "num",  1,    600,  "Body clearance time, s (dose leaves the body)", 0 },
+    { "linger",           "num",  0,    1,    "Lasting effect (share of harm from the dose)", 2 },
+    { "deposit",          "num",  0,    0.1,  "Settles on floors and skin (contamination)", 3 },
+    { "jtCooling",        "num",  0,    150,  "Cooling when released from a cylinder, C", 0 },
     { "flammable",        "bool", 0, 1,    "Flammable / explosive" },
     { "flameMin",         "num",  0.01, 1,    "Lower flammable limit", 2 },
     { "flameMax",         "num",  0.01, 1,    "Upper flammable limit", 2 },
@@ -196,7 +200,7 @@ net.Receive(C.NET_GASDEF, function(len, ply)
     local name, json = net.ReadString(), net.ReadString()
     if not SlotIndex(name) then return end
     if not AetherGas.CanEditCustomGas(ply, name) then
-        ply:ChatPrint("[Aether] Custom gases can only be edited by admins on this server.")
+        AetherGas.Notify(ply, 0, "hint.custom_admin")
         return
     end
     AetherGas.SetCustomGas(name, util.JSONToTable(json) or {})

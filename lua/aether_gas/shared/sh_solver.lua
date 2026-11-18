@@ -53,10 +53,16 @@ local Pool       = Spatial.Pool
 local Collision  = Spatial.Collision
 local Gas, Conc, Temp = Spatial.Gas, Spatial.Conc, Spatial.Temp
 local VelX, VelY, VelZ = Spatial.VelX, Spatial.VelY, Spatial.VelZ
+-- Заражение поверхностей: стойкие агенты (deposit > 0: иприт, зарин…) оседают на пол ячейки и потом
+-- медленно испаряются обратно в воздух (OFFGAS_RATE) — облако давно ушло, а низина ещё «фонит».
+local Deposit = Spatial.DeclareField("Deposit", 0)
+local DepGas  = Spatial.DeclareField("DepGas", 0)
+Spatial.Deposit, Spatial.DepGas = Deposit, DepGas
 local chunkSlot, slotKey, slotDirty, slotCount = Pool.chunkSlot, Pool.slotKey, Pool.slotDirty, Pool.slotCount
 
 local Pdens, Pdiff, Pspread, Pdecay, Pcoh = P.Density, P.Diffusion, P.Spread, P.Decay, P.Cohesion
 local Pcool, Pcond, PcondT, PinDecay = P.Cooling, P.CondenseRate, P.CondenseTemp, P.IndoorDecay
+local Pdeposit = P.Deposit
 local PflameMin, PflameMax, Pblast = P.FlameMin, P.FlameMax, P.BlastDamage
 
 local RequestProbe = Spatial.RequestProbe
@@ -84,6 +90,7 @@ local COH_LEAK      = 0.008  -- 1/с, утечка сквозь когезию: 
 local PRESS_RATE    = 1.6    -- 1/с, перенос избыточного давления (c > 1) через грань
 local PRESS_ACCEL   = 260    -- юнит/с² на единицу перепада избытка: разгон струи из переполненного объёма
 local PUSH_FOREIGN  = 0.6    -- доля разгона, передаваемая чужому газу у грани (вытеснение)
+local OFFGAS_RATE   = 0.012  -- 1/с: доля осевшего агента, испаряющаяся обратно (иприт «фонит» минутами)
 local RELEASE_DELAY = 1.0    -- пустой чанк возвращается в пул через секунду
 local AMB           = C.AMBIENT_TEMP
 local KELVIN        = C.KELVIN
@@ -212,6 +219,7 @@ local function StepCell(idx, slot, li, key, f, g, c, dt, outdoor, s)
     local lx, ly, lz = band(li, 7), band(rshift(li, 3), 7), rshift(li, 6)
     local remaining = c
     local blocked = 0
+    local onFloor = false                           -- грань −Z закрыта: под ячейкой пол
     local ex = c > 1 and c - 1 or 0                 -- избыточное давление ячейки
     local leak = COH_LEAK * dt
     local press = PRESS_RATE * dt
@@ -239,6 +247,7 @@ local function StepCell(idx, slot, li, key, f, g, c, dt, outdoor, s)
         else
             state = 0
             blocked = blocked + 1
+            if dir == 5 then onFloor = true end
         end
 
         if state >= 1 then
@@ -332,6 +341,15 @@ local function StepCell(idx, slot, li, key, f, g, c, dt, outdoor, s)
     end
     remaining = remaining - remaining * min(1, decay * dt)
 
+    -- Оседание стойкого агента на пол (заражение поверхности)
+    local dr = Pdeposit[g]
+    if dr > 0 and onFloor then
+        local d = remaining * dr * dt
+        remaining = remaining - d
+        Deposit[idx] = Deposit[idx] + d
+        DepGas[idx] = g
+    end
+
     if remaining < EPS then
         ClearCell(idx, slot)
         return
@@ -358,6 +376,14 @@ local function StepChunk(slot, dt, now)
     for n = 0, 511 do
         local li = forward and n or (511 - n)
         local idx = base + li + 1
+        local dep = Deposit[idx]
+        if dep > 0 then
+            -- испарение с заражённой поверхности обратно в воздух этой ячейки
+            local amt = dep * OFFGAS_RATE * dt
+            if dep < 0.004 then amt = dep end
+            local put = Fill(idx, slot, DepGas[idx], amt, AMB, 0, 0, 0)
+            if put > 0 or dep < 0.004 then Deposit[idx] = dep - (dep < 0.004 and dep or put) end
+        end
         local c = Conc[idx]
         if c > 0 then
             cells = cells + 1
@@ -1342,9 +1368,21 @@ Solver.FlammableAt = FlammableAt
 
 local tunnelsThisTick, tunnelTick = 0, 0
 hook.Add("PostEntityFireBullets", "AetherGas.Solver.Bullets", function(_, data)
-    if Pool.used == 0 then return end
     local tr = data and data.Trace
     if not tr then return end
+
+    -- Попадание в газовый баллон — напрямую по трассе: пробоина/взрыв не зависят от того, дошёл ли урон
+    -- до ENT:OnTakeDamage (другие моды могут перехватить EntityTakeDamage). Повтор в том же тике отсекается.
+    local hit = tr.Entity
+    if IsValid(hit) and hit.Hit and hit:GetClass() == "aether_canister" then
+        local dmg = tonumber(data.Damage) or 0
+        if dmg <= 0 and data.AmmoType then dmg = game.GetAmmoPlayerDamage(game.GetAmmoID(data.AmmoType)) or 10 end
+        local dtype = DMG_BULLET
+        if data.TracerName == "AR2Tracer" then dtype = bit.bor(DMG_BULLET, DMG_ENERGYBEAM) end
+        hit:Hit(dtype, dmg, tr.HitPos, data.Attacker)
+    end
+
+    if Pool.used == 0 then return end
     local t = engine.TickCount()
     if t ~= tunnelTick then tunnelTick, tunnelsThisTick = t, 0 end
     if tunnelsThisTick >= MAX_TUNNELS_PER_TICK then return end

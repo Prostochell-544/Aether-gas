@@ -19,6 +19,7 @@ ENT.PrintName = "Gas Cylinder"
 ENT.Author    = "Aether"
 ENT.Category  = "Aether Gas"
 ENT.Spawnable = false   -- в спавн-меню — пресеты ниже (по одному на газ)
+ENT.RenderGroup = RENDERGROUP_BOTH
 
 -- Пресеты спавн-меню: тот же класс, газ через KeyValues; иконка materials/entities/aether_cylinder_<газ>.png
 for i = 1, #AetherGas.BaseGases do
@@ -56,6 +57,16 @@ local LEAK_RATE   = 7     -- концентрация/с из одной про�
 local MAX_LEAKS   = 3
 local THRUST      = 700   -- реактивная тяга одной пробоины, юнит/с² на единицу массы
 local BIG_CALIBER = 25    -- урон пули, выше которого горючий баллон взрывается (крупный калибр, винтовки)
+local VALVE_OUT   = Vector(4.3, 0, 41.5)   -- выход вентиля
+
+--- Температура выходящего газа: расширение из баллона охлаждает его (Джоуль — Томсон, а у сжиженных
+-- газов — испарение): jtCooling из реестра, в пробоине (больший перепад давления) — в 1.3 раза сильнее.
+local function ExitTemp(gasName, leak)
+    local def = AetherGas.GetGas(gasName)
+    if not def then return nil end
+    local t = def.emitTemp - def.jtCooling * (leak and 1.3 or 1)
+    return t < -80 and -80 or t
+end
 
 function ENT:SetupDataTables()
     self:NetworkVar("String", 0, "GasName")
@@ -71,6 +82,32 @@ function ENT:UpdateSkin()
 end
 
 if CLIENT then
+    local PUFF = Material("aether/smoke_puff")
+    local MistPos = Vector(0, 0, 0)
+
+    --- Туман у выхода холодного газа: 3 клуба вдоль струи, дрожат и растут к концу.
+    local function Mist(ent, lp, n, power)
+        local t = CurTime() * 7 + ent:EntIndex()
+        render.SetMaterial(PUFF)
+        for i = 1, 3 do
+            local d = i * 4 + (t + i) % 1 * 3
+            MistPos:Set(ent:LocalToWorld(lp + n * d))
+            local size = (5 + i * 4) * power
+            local a = (120 - i * 30) * power
+            render.DrawSprite(MistPos, size, size, Color(235, 242, 250, a))
+        end
+    end
+
+    function ENT:DrawTranslucent()
+        local def = AetherGas.GetGas(self:GetGasName())
+        if not def or def.jtCooling < 20 or self:GetContents() <= 0 then return end
+        local power = math.min(1, def.jtCooling / 60)
+        if self:GetOpen() and not IsValid(self:GetNW2Entity("AetherHose")) then Mist(self, VALVE_OUT, Vector(1, 0, 0.15), power) end
+        for i = 1, self:GetLeaks() do
+            Mist(self, self:GetNW2Vector("AetherLeak" .. i), self:GetNW2Vector("AetherLeakN" .. i), power * 1.3)
+        end
+    end
+
     function ENT:Draw()
         self:DrawModel()
         if LocalPlayer():GetEyeTrace().Entity == self then
@@ -108,14 +145,18 @@ end
 
 --- Пробоина в точке hitPos: струя газа по нормали от оси баллона, тяга в обратную сторону.
 function ENT:AddLeak(hitPos)
+    self.LeakList = self.LeakList or {}
     if #self.LeakList >= MAX_LEAKS or self:GetContents() <= 0 or self.Exploded then return end
     local lp = self:WorldToLocal(hitPos)
     local n = Vector(lp.x, lp.y, 0)          -- нормаль боковой стенки (ось баллона — Z)
     if n:LengthSqr() < 0.01 then n = Vector(1, 0, 0) end
     n:Normalize()
     local leak = { pos = lp, normal = n }
-    leak.source = AetherGas.Solver.AddSource(self:GetGasName(), lp + n * 1.5, LEAK_RATE, 0, nil, n * 300, self)
+    leak.source = AetherGas.Solver.AddSource(self:GetGasName(), lp + n * 1.5, LEAK_RATE, 0,
+        ExitTemp(self:GetGasName(), true), n * 300, self)
     self.LeakList[#self.LeakList + 1] = leak
+    self:SetNW2Vector("AetherLeak" .. #self.LeakList, lp + n * 1.5)
+    self:SetNW2Vector("AetherLeakN" .. #self.LeakList, n)
     self:SetLeaks(#self.LeakList)
     if not self.LeakHiss then
         self.LeakHiss = CreateSound(self, "ambient/gas/steam2.wav")
@@ -156,25 +197,38 @@ end
 local IGNITING = bit.bor(DMG_BURN, DMG_SHOCK, DMG_ENERGYBEAM, DMG_PLASMA, DMG_DISSOLVE, DMG_SLOWBURN)
 local PIERCING = bit.bor(DMG_BULLET, DMG_BUCKSHOT, DMG_SNIPER, DMG_NEVERGIB, DMG_SLASH, DMG_CLUB, DMG_AIRBOAT)
 
-function ENT:OnTakeDamage(dmg)
+--- Реакция на повреждение. dmgType/amount/pos/attacker — из DamageInfo (OnTakeDamage) или из трассы пули
+-- (sh_solver, PostEntityFireBullets): пули обрабатываются и тогда, когда урон перехватил другой мод.
+function ENT:Hit(dmgType, amount, pos, attacker)
     if self.Exploded or self:GetContents() <= 0 then return end
+    local t = engine.TickCount()
+    if self.LastHitTick == t and self.LastHitPos and self.LastHitPos:DistToSqr(pos) < 4 then return end   -- уже учтено
+    self.LastHitTick, self.LastHitPos = t, pos
+    if AetherGas.CVar.DebugCanister and AetherGas.CVar.DebugCanister:GetBool() then
+        print(string.format("[Aether] %s hit: type %d, damage %.1f", self:GetGasName(), dmgType, amount))
+    end
     local flammable = Flammable(self)
-    local ignites = dmg:IsExplosionDamage() or bit.band(dmg:GetDamageType(), IGNITING) ~= 0
-    local bigCaliber = dmg:IsBulletDamage() and dmg:GetDamage() > BIG_CALIBER and not dmg:IsDamageType(DMG_NEVERGIB)
+    local blast = bit.band(dmgType, DMG_BLAST) ~= 0
+    local ignites = blast or bit.band(dmgType, IGNITING) ~= 0
+    local bullet = bit.band(dmgType, DMG_BULLET) ~= 0
+    local bigCaliber = bullet and amount > BIG_CALIBER and bit.band(dmgType, DMG_NEVERGIB) == 0
     if flammable and (ignites or bigCaliber) then
-        self:Burst(true, dmg:GetAttacker())
+        self:Burst(true, attacker)
         return
     end
-    if dmg:IsExplosionDamage() then   -- негорючий газ: разрыв
+    if blast then   -- негорючий газ: разрыв
         self:Burst(false)
         return
     end
-    local pierce = bit.band(dmg:GetDamageType(), PIERCING) ~= 0 or (dmg:IsDamageType(DMG_CRUSH) and dmg:GetDamage() > 80)
-    if pierce and (not dmg:IsDamageType(DMG_CLUB) or dmg:GetDamage() > 20) then
-        local pos = dmg:GetDamagePosition()
+    local pierce = bit.band(dmgType, PIERCING) ~= 0 or (bit.band(dmgType, DMG_CRUSH) ~= 0 and amount > 80)
+    if pierce and (bit.band(dmgType, DMG_CLUB) == 0 or amount > 20) then
         if pos:IsZero() then pos = self:WorldSpaceCenter() + VectorRand() * 3 end
         self:AddLeak(pos)
     end
+end
+
+function ENT:OnTakeDamage(dmg)
+    self:Hit(dmg:GetDamageType(), dmg:GetDamage(), dmg:GetDamagePosition(), dmg:GetAttacker())
 end
 
 function ENT:SetValve(open)
@@ -183,10 +237,12 @@ function ENT:SetValve(open)
     if open and self:GetContents() > 0 then
         local hose = self.Hose
         if IsValid(hose) then   -- газ идёт по шлангу и выходит из наконечника
-            self.SourceId = AetherGas.Solver.AddSource(self:GetGasName(), Vector(4.6, 0, 0), RATE, 0, nil, Vector(120, 0, 0), hose)
+            self.SourceId = AetherGas.Solver.AddSource(self:GetGasName(), Vector(4.6, 0, 0), self.Rate or RATE, 0,
+                ExitTemp(self:GetGasName()), Vector(120, 0, 0), hose)
         else
             local up = Vector(2.8, 0, 41.5)   -- выход вентиля
-            self.SourceId = AetherGas.Solver.AddSource(self:GetGasName(), up, RATE, 0, nil, Vector(60, 0, 10), self)
+            self.SourceId = AetherGas.Solver.AddSource(self:GetGasName(), up, self.Rate or RATE, 0,
+                ExitTemp(self:GetGasName()), Vector(60, 0, 10), self)
         end
         self.Hiss = CreateSound(self, "ambient/gas/cannister_loop.wav")
         self.Hiss:PlayEx(0.5, 95)
@@ -204,6 +260,7 @@ function ENT:SetHose(nozzle)
     local wasOpen = self:GetOpen()
     if wasOpen then self:SetValve(false) end
     self.Hose = IsValid(nozzle) and nozzle or nil
+    self:SetNW2Entity("AetherHose", self.Hose or NULL)
     if IsValid(nozzle) then
         nozzle.Canister = self
         nozzle:SetCanister(self)
@@ -217,7 +274,8 @@ end
 
 function ENT:Think()
     local dt = 0.1
-    local drain = (self:GetOpen() and RATE or 0) + LEAK_RATE * #self.LeakList
+    self.LeakList = self.LeakList or {}
+    local drain = (self:GetOpen() and (self.Rate or RATE) or 0) + LEAK_RATE * #self.LeakList
     if drain > 0 then
         local left = math.max(0, self:GetContents() - drain * dt)
         self:SetContents(left)

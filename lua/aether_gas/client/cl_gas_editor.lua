@@ -7,13 +7,14 @@
 ]]
 
 local AetherGas = AetherGas
+local L = AetherGas.L
 local frame
 
 local function GasChoices(combo, selected)
     combo:Clear()
     for id = 1, AetherGas.GasCount do
         local def = AetherGas.GasById[id]
-        local label = (def.custom and "* " or "") .. def.printName
+        local label = (def.custom and "* " or "") .. AetherGas.GasName(def)
         combo:AddChoice(label, def.name, def.name == selected)
     end
 end
@@ -33,7 +34,7 @@ local function BuildGunSide(parent)
         l:SetDark(true)
     end
 
-    Label("Gas to spray")
+    Label(L("editor.gas"))
     local combo = p:Add("DComboBox")
     combo:Dock(TOP)
     combo:DockMargin(4, 0, 4, 0)
@@ -41,12 +42,12 @@ local function BuildGunSide(parent)
     combo.OnSelect = function(_, _, _, name) RunConsoleCommand("aether_gun_gas", name) end
     p.GasCombo = combo
 
-    Label("Mode")
+    Label(L("editor.mode"))
     local mode = p:Add("DComboBox")
     mode:Dock(TOP)
     mode:DockMargin(4, 0, 4, 0)
-    mode:AddChoice("Cloud at aim point", 1, GetConVar("aether_gun_mode"):GetInt() ~= 2)
-    mode:AddChoice("Jet from the nozzle", 2, GetConVar("aether_gun_mode"):GetInt() == 2)
+    mode:AddChoice(L("editor.mode_aim"), 1, GetConVar("aether_gun_mode"):GetInt() ~= 2)
+    mode:AddChoice(L("editor.mode_jet"), 2, GetConVar("aether_gun_mode"):GetInt() == 2)
     mode.OnSelect = function(_, _, _, v) RunConsoleCommand("aether_gun_mode", tostring(v)) end
 
     local function Slider(text, cvar, lo, hi, dec)
@@ -59,12 +60,12 @@ local function BuildGunSide(parent)
         s:SetConVar(cvar)
         s:SetDark(true)
     end
-    Label("Sprayer")
-    Slider("Rate (per second)", "aether_gun_rate", 0.5, 30, 1)
-    Slider("Distance", "aether_gun_distance", 32, 1500, 0)
-    Slider("Cloud radius (voxels)", "aether_gun_spread", 0, 3, 0)
-    Slider("Jet speed", "aether_gun_velocity", 0, 800, 0)
-    Slider("Temperature (-200 = gas default)", "aether_gun_temp", -200, 800, 0)
+    Label(L("editor.sprayer"))
+    Slider(L("editor.rate"), "aether_gun_rate", 0.5, 30, 1)
+    Slider(L("editor.distance"), "aether_gun_distance", 32, 1500, 0)
+    Slider(L("editor.radius"), "aether_gun_spread", 0, 3, 0)
+    Slider(L("editor.jet_speed"), "aether_gun_velocity", 0, 800, 0)
+    Slider(L("editor.temp"), "aether_gun_temp", -200, 800, 0)
 
     local help = p:Add("DLabel")
     help:Dock(TOP)
@@ -72,8 +73,7 @@ local function BuildGunSide(parent)
     help:SetWrap(true)
     help:SetAutoStretchVertical(true)
     help:SetDark(true)
-    help:SetText("LMB - spray, R - remove gas at aim. Gases marked * are custom: edit them on the right, " ..
-        "press Apply, then pick them here.")
+    help:SetText(L("editor.help"))
     return p
 end
 
@@ -93,7 +93,7 @@ local function BuildEditor(parent, gunSide)
     base:Dock(FILL)
     base:DockMargin(6, 0, 0, 0)
     GasChoices(base)   -- Clear() внутри сбрасывает текст, поэтому подсказка — после заполнения
-    base:SetValue("Start from an existing gas...")
+    base:SetValue(L("editor.start_from"))
 
     local function Load(flat)
         for key, ctl in pairs(controls) do
@@ -123,7 +123,7 @@ local function BuildEditor(parent, gunSide)
 
     for i = 1, #AetherGas.CustomSlots do
         local name = AetherGas.CustomSlots[i]
-        slot:AddChoice("Edit: " .. name, name, i == 1)
+        slot:AddChoice(L("editor.edit_slot", name), name, i == 1)
     end
     slot.OnSelect = function(_, _, _, name)
         current = name
@@ -131,13 +131,14 @@ local function BuildEditor(parent, gunSide)
     end
     base.OnSelect = function(_, _, _, name)
         local flat = AetherGas.CustomGasToFlat(AetherGas.GetGas(name))
-        flat.printName = "Custom " .. AetherGas.GetGas(name).printName
+        flat.printName = L("editor.custom_prefix", AetherGas.GasName(AetherGas.GetGas(name)))
         Load(flat)
     end
 
     for i = 1, #AetherGas.CustomGasFields do
         local f = AetherGas.CustomGasFields[i]
         local key, kind, lo, hi, label, dec = f[1], f[2], f[3], f[4], f[5], f[6]
+        if AetherGas.HasL("field." .. key) then label = L("field." .. key) end
         local ctl
         if kind == "num" then
             ctl = p:Add("DNumSlider")
@@ -161,7 +162,8 @@ local function BuildEditor(parent, gunSide)
         elseif kind == "enum" then
             ctl = p:Add("DComboBox")
             for k = 1, #AetherGas.DamageKinds do
-                ctl:AddChoice("Damage type: " .. AetherGas.DamageKinds[k][1], AetherGas.DamageKinds[k][1])
+                local kindName = AetherGas.DamageKinds[k][1]
+                ctl:AddChoice(L("editor.damage_type", L("dmg." .. kindName)), kindName)
             end
         end
         ctl:Dock(TOP)
@@ -178,7 +180,7 @@ local function BuildEditor(parent, gunSide)
     local apply = vgui.Create("DButton", buttons)
     apply:Dock(LEFT)
     apply:SetWide(150)
-    apply:SetText("Apply")
+    apply:SetText(L("editor.apply"))
     apply.DoClick = function()
         AetherGas.SubmitCustomGas(current, Collect())
         surface.PlaySound("buttons/button14.wav")
@@ -186,7 +188,7 @@ local function BuildEditor(parent, gunSide)
     local use = vgui.Create("DButton", buttons)
     use:Dock(FILL)
     use:DockMargin(6, 0, 0, 0)
-    use:SetText("Apply and spray it")
+    use:SetText(L("editor.apply_spray"))
     use.DoClick = function()
         AetherGas.SubmitCustomGas(current, Collect())
         RunConsoleCommand("aether_gun_gas", current)
@@ -202,13 +204,16 @@ end
 function AetherGas.OpenGasEditor()
     if IsValid(frame) then frame:Close() return end
     frame = vgui.Create("DFrame")
-    frame:SetTitle("Aether - Gas Sprayer")
+    frame:SetTitle(L("editor.title"))
     frame:SetSize(math.min(ScrW() - 40, 820), math.min(ScrH() - 40, 640))
     frame:Center()
     frame:MakePopup()
     frame.Gun = BuildGunSide(frame)
     BuildEditor(frame, frame.Gun)
 end
+
+-- Сменился язык: меню перестраивается при следующем открытии
+AetherGas.OnLanguage("editor", function() if IsValid(frame) then frame:Close() end end)
 
 -- Сервер прислал новые параметры пользовательского газа: обновить имена в списке (редактор не трогаем)
 hook.Add("AetherGas.CustomGasChanged", "AetherGas.Editor", function()

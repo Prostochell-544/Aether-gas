@@ -50,19 +50,17 @@ function AetherGas.OwnsMask(ply)
 end
 
 -- Понятное имя чужой маски для сообщений игроку
-local MASK_NAMES = { gbombs5 = "GMod Bombs", jmod = "JMod", rebirth = "Rebirth", hook = "another mod's" }
+local MASK_NAMES = { gbombs5 = "GMod Bombs", jmod = "JMod", rebirth = "Rebirth", zcity = "Z-City", gchem = "GChem",
+    hook = "@hint.another_mod" }
 local function ExternalName(ply)
     if not AetherGas.ExternalMask then return nil end
     local v, name = AetherGas.ExternalMask(ply)
     if v < 0.5 then return nil end
-    return MASK_NAMES[name] or name or "another mod's"
+    return MASK_NAMES[name] or name or "@hint.another_mod"
 end
 
---- Подсказка в центре экрана (первые разы) + строка в чат.
-local function Hint(ply, text)
-    ply:PrintMessage(HUD_PRINTCENTER, text)
-    ply:ChatPrint("[Aether] " .. text)
-end
+--- Подсказка (всплывающая + строка в чат) на языке игрока: key — ключ sh_lang.lua.
+local function Hint(ply, key, ...) AetherGas.Notify(ply, 1, key, ...) end
 
 function AetherGas.GiveMask(ply, filter)
     if not IsValid(ply) or not ply:IsPlayer() or AetherGas.OwnsMask(ply) then return false end
@@ -70,10 +68,10 @@ function AetherGas.GiveMask(ply, filter)
     ply:SetNW2Bool("AetherMaskOwned", true)
     ply:SetNW2Bool("AetherMask", external == nil)   -- поверх чужой маски не надевается — кладётся в карман
     if external then
-        Hint(ply, "Gas mask put in your pocket: take off your " .. external .. " mask, then type !mask")
+        Hint(ply, "hint.mask_pocket", external)
     elseif not ply.AetherMaskHinted then
         ply.AetherMaskHinted = true
-        Hint(ply, "Gas mask ON. Take off / put on: type !mask (or hold E and press R)")
+        Hint(ply, "hint.mask_on")
     end
     ply:SetNW2Float("AetherFilter", filter or CV.MaskFilter:GetFloat())
     ply:EmitSound("items/ammopickup.wav", 60)
@@ -88,7 +86,7 @@ function AetherGas.ToggleMask(ply)
     if wear then
         local external = ExternalName(ply)
         if external then
-            Hint(ply, "You already wear a " .. external .. " gas mask. Take it off first.")
+            Hint(ply, "hint.mask_already", external)
             return
         end
     end
@@ -119,7 +117,7 @@ AetherGas.MAX_SPARE_FILTERS = 3
 
 function AetherGas.AddFilter(ply)
     if not AetherGas.OwnsMask(ply) then
-        ply:ChatPrint("[Aether] You need a gas mask to use a filter.")
+        AetherGas.Notify(ply, 0, "hint.need_mask")
         return false
     end
     local max = CV.MaskFilter:GetFloat()
@@ -130,7 +128,7 @@ function AetherGas.AddFilter(ply)
     end
     local spare = ply:GetNW2Int("AetherSpareFilters", 0)
     if spare >= AetherGas.MAX_SPARE_FILTERS then
-        ply:ChatPrint("[Aether] You cannot carry more spare filters.")
+        AetherGas.Notify(ply, 0, "hint.filters_full")
         return false
     end
     ply:SetNW2Int("AetherSpareFilters", spare + 1)
@@ -156,6 +154,13 @@ end)
 
 hook.Add("KeyPress", "AetherGas.Network.MaskKeys", function(ply, key)
     if key == IN_RELOAD and ply:KeyDown(IN_USE) then AetherGas.ToggleMask(ply) end
+    -- E + Alt (шаг): снять костюм химзащиты (выпадает под ноги, его можно снова надеть через E)
+    if key == IN_WALK and ply:KeyDown(IN_USE) and AetherGas.HasSuit and AetherGas.HasSuit(ply) then
+        if (ply.AetherSuitNext or 0) > CurTime() then return end
+        ply.AetherSuitNext = CurTime() + 1
+        AetherGas.RemoveSuit(ply, true)
+        ply:EmitSound("npc/combine_soldier/gear" .. math.random(1, 6) .. ".wav", 70)
+    end
 end)
 
 hook.Add("PlayerSay", "AetherGas.Network.MaskChat", function(ply, text)
@@ -167,27 +172,26 @@ hook.Add("PlayerSay", "AetherGas.Network.MaskChat", function(ply, text)
 end)
 
 ---------------------------------------------------------------------------------------------------
--- Костюм химзащиты (aether_hazmat): NW2 «AetherSuit». Защищает дыхание и кожу целиком, от пара наполовину.
+-- Костюм химзащиты (aether_hazmat): NW2 «AetherSuit». Закрывает только кожу: кожное действие зарина/иприта,
+-- новое заражение, пар вполовину. Дыхательного аппарата в нём нет — противогаз надевается отдельно.
 ---------------------------------------------------------------------------------------------------
 function AetherGas.HasSuit(ply) return ply:GetNW2Bool("AetherSuit", false) end
 
 function AetherGas.WearSuit(ply)
     if not IsValid(ply) or not ply:IsPlayer() or not ply:Alive() then return false end
     if AetherGas.HasSuit(ply) then
-        ply:ChatPrint("[Aether] You already wear a hazmat suit.")
+        AetherGas.Notify(ply, 0, "hint.suit_already")
         return false
     end
     ply:SetNW2Bool("AetherSuit", true)
-    if ply.hazsuited ~= true then ply.hazsuited, ply.AetherSetGBSuit = true, true end   -- газы GBombs тоже не действуют
     ply:EmitSound("npc/combine_soldier/gear" .. math.random(1, 6) .. ".wav", 70)
-    Hint(ply, "Hazmat suit ON: full protection. Take it off: type !suit")
+    Hint(ply, "hint.suit_on")
     return true
 end
 
 function AetherGas.RemoveSuit(ply, drop)
     if not IsValid(ply) or not AetherGas.HasSuit(ply) then return end
     ply:SetNW2Bool("AetherSuit", false)
-    if ply.AetherSetGBSuit then ply.hazsuited, ply.AetherSetGBSuit = false, nil end
     if drop then
         local e = ents.Create("aether_hazmat")
         if IsValid(e) then
@@ -224,6 +228,11 @@ end)
 hook.Add("PlayerSpawn", "AetherGas.Network.Reset", function(ply)
     ply:SetNW2Float("AetherSlow", 0)
     DamageAcc[ply] = nil
+    if AetherGas.ResetBody then AetherGas.ResetBody(ply) end
+    ply:SetNW2Float("AetherDose", 0)
+    ply:SetNW2Int("AetherDoseGas", 0)
+    ply:SetNW2Float("AetherContam", 0)
+    ply:SetNW2Int("AetherContamGas", 0)
 end)
 
 ---------------------------------------------------------------------------------------------------
@@ -278,6 +287,114 @@ local function SampleBody(ent)
 end
 AetherGas.SampleBody = SampleBody
 
+---------------------------------------------------------------------------------------------------
+-- Доза и заражение.
+--   Доза газа g: D += c·утечка·dt в облаке; выведение D *= exp(−dt / clearance). Эквивалент концентрации
+--   в организме L = D / clearance. Доля linger урона и эффектов идёт от L — зарин и иприт продолжают
+--   действовать после выхода из облака, CS «держит» слёзы, CO — потемнение. NW2 «AetherDose» = L самого
+--   сильного газа, «AetherDoseGas» — его id (клиентские эффекты, cl_effects).
+--   Заражение кожи/одежды: стойкий агент (deposit > 0) без костюма оседает на игроке (NW2 «AetherContam»,
+--   «AetherContamGas»): ожог кожи и след газа вокруг, пока агент сам не испарится. Костюм, надетый
+--   после заражения, уже не помогает — агент под ним.
+---------------------------------------------------------------------------------------------------
+local Body = setmetatable({}, { __mode = "k" })   -- [ent] = { dose = { [gasId] = D }, contam, contamGas }
+local CONTAM_RATE  = 0.6     -- доля дозы осаждения, попадающая на кожу без костюма
+local CONTAM_DECAY = 0.004   -- 1/с: само по себе заражение сходит медленно
+local CONTAM_EMIT  = 0.06    -- доля заражения в секунду, испаряющаяся вокруг игрока
+
+local function BodyState(ent)
+    local b = Body[ent]
+    if not b then
+        b = { dose = {}, contam = 0, contamGas = 0 }
+        Body[ent] = b
+    end
+    return b
+end
+
+function AetherGas.ResetBody(ent) Body[ent] = nil end
+
+function AetherGas.GetDose(ent, gas)
+    local b = Body[ent]
+    if not b then return 0 end
+    local id = isnumber(gas) and gas or AetherGas.GetGasId(gas)
+    return (b.dose[id] or 0) / P.Clearance[id]
+end
+
+function AetherGas.Decontaminate(ent)
+    local b = Body[ent]
+    if b then b.contam, b.contamGas = 0, 0 end
+    if ent:IsPlayer() then
+        ent:SetNW2Float("AetherContam", 0)
+        ent:SetNW2Int("AetherContamGas", 0)
+    end
+end
+
+local function Hurt(ent, amount, dmgType, pos)
+    local acc = (DamageAcc[ent] or 0) + amount
+    if acc >= 1 then
+        local whole = floor(acc)
+        acc = acc - whole
+        local info = DamageInfo()
+        info:SetDamage(whole)
+        info:SetDamageType(dmgType)
+        local gasEnt = AetherGas.GasInflictor()
+        info:SetAttacker(gasEnt)
+        info:SetInflictor(gasEnt)
+        info:SetDamagePosition(pos)
+        ent:TakeDamageInfo(info)
+    end
+    DamageAcc[ent] = acc
+end
+
+--- Выведение дозы, отложенный урон и эффекты, заражение — каждый тик, в облаке и вне его.
+local function ApplyBody(ent, isPlayer, scale)
+    local b = Body[ent]
+    if not b then return end
+    local bestL, bestG = 0, 0
+    for g, d in pairs(b.dose) do
+        d = d * math.exp(-PERIOD / P.Clearance[g])
+        if d < 0.002 then
+            b.dose[g] = nil
+        else
+            b.dose[g] = d
+            local L = d / P.Clearance[g]
+            local linger = P.Linger[g]
+            if linger > 0 then
+                local dmg = P.Damage[g] * L * linger * PERIOD * scale
+                if dmg > 0 then Hurt(ent, dmg, AetherGas.GasById[g].damageType, ent:EyePos()) end
+            end
+            if L * linger > bestL then bestL, bestG = L * linger, g end
+        end
+    end
+    -- заражение кожи и одежды
+    if b.contam > 0 then
+        local g = b.contamGas
+        local def = AetherGas.GasById[g]
+        if def then
+            Hurt(ent, P.Damage[g] * def.skinDamage * b.contam * PERIOD * scale, def.damageType, ent:WorldSpaceCenter())
+            local emit = b.contam * CONTAM_EMIT * PERIOD
+            if emit > 0.002 then Solver.PuffAt(def.name, ent:WorldSpaceCenter(), emit * 4, nil, nil, 0) end
+        end
+        b.contam = b.contam * (1 - CONTAM_DECAY * PERIOD) - b.contam * CONTAM_EMIT * PERIOD
+        if b.contam < 0.01 then b.contam, b.contamGas = 0, 0 end
+        if isPlayer then
+            if math.abs(ent:GetNW2Float("AetherContam", 0) - b.contam) > 0.02 then ent:SetNW2Float("AetherContam", b.contam) end
+            if ent:GetNW2Int("AetherContamGas", 0) ~= b.contamGas then ent:SetNW2Int("AetherContamGas", b.contamGas) end
+        end
+    end
+    if isPlayer then
+        if math.abs(ent:GetNW2Float("AetherDose", 0) - bestL) > 0.01 then ent:SetNW2Float("AetherDose", bestL) end
+        if ent:GetNW2Int("AetherDoseGas", 0) ~= bestG then ent:SetNW2Int("AetherDoseGas", bestG) end
+        -- кашель после выхода из облака, пока доза не выведена
+        local def = AetherGas.GasById[bestG]
+        local cough = def and def.screen and def.screen.cough or 0
+        if cough > 0 and random() < cough * bestL * 0.25 then
+            ent:EmitSound(COUGH_SOUNDS[random(1, #COUGH_SOUNDS)], 70, random(92, 108))
+            ent:ViewPunch(Angle(random(2, 5), random(-2, 2), 0))
+        end
+    end
+end
+
 local function ApplyExposure(ent, isPlayer, scale)
     local g, c, eye, slowG, slowC = SampleBody(ent)
 
@@ -289,14 +406,14 @@ local function ApplyExposure(ent, isPlayer, scale)
 
     local def = AetherGas.GasById[g]
     -- Хук для других модов: false — пропустить воздействие (свой иммунитет, режим, класс игрока…)
-    if hook.Run("AetherGas.PreExposure", ent, def.name, c) == false then return end
-    -- Костюм химзащиты с дыхательным аппаратом: газы не действуют, пар обжигает вполовину
-    if isPlayer and ent:GetNW2Bool("AetherSuit", false) then
-        if def.damageType ~= DMG_BURN then return end
-        scale = scale * 0.5
-    end
+    local delta = c * PERIOD
+    if hook.Run("AetherGas.PreExposure", ent, def.name, c, delta) == false then return end
+    if hook.Run("Aether_PreGasExposure", ent, def.name, c, delta) == false then return end
+    -- Костюм химзащиты Aether закрывает кожу, но не дыхание: пар обжигает вполовину
+    if isPlayer and def.damageType == DMG_BURN and ent:GetNW2Bool("AetherSuit", false) then scale = scale * 0.5 end
     -- Защита дыхания 0..1: своя маска (тратит фильтр) или маска другого мода (sv_compat.lua).
-    -- Урон × (1 − защита·(1 − skinDamage)): кожное действие (зарин, иприт) снимает только костюм.
+    -- Утечка = вдох·(1 − защита дыхания) + кожа·(1 − костюм), skinDamage — доля кожного действия
+    -- (зарин, иприт). Полная защита от них — противогаз И костюм.
     local prot, masked = 0, false
     if isPlayer and def.maskProtects and AetherGas.HasMask(ent) then
         local filter = ent:GetNW2Float("AetherFilter", 0)
@@ -320,8 +437,8 @@ local function ApplyExposure(ent, isPlayer, scale)
     end
     if ext > prot then prot = ext end
     local suit = isPlayer and AetherGas.HasGasSuit and AetherGas.HasGasSuit(ent)
-    if suit and def.maskProtects then return end
-    local leak = 1 - prot * (1 - def.skinDamage)
+    local skin = def.maskProtects and def.skinDamage or 0
+    local leak = (1 - skin) * (1 - prot) + (suit and 0 or skin)
     if leak <= 0.001 and not passDamage then return end
 
     -- Судороги (зарин): толчки камеры, сильнее с концентрацией; противогаз их не снимает (кожа)
@@ -330,22 +447,20 @@ local function ApplyExposure(ent, isPlayer, scale)
         ent:ViewPunch(Angle(random(-6, 6), random(-6, 6), random(-4, 4)))
     end
 
-    local dmg = P.Damage[g] * c * PERIOD * scale * (passDamage and 1 or leak)
-    if dmg > 0 then
-        local acc = (DamageAcc[ent] or 0) + dmg
-        if acc >= 1 then
-            local whole = floor(acc)
-            acc = acc - whole
-            local info = DamageInfo()
-            info:SetDamage(whole)
-            info:SetDamageType(def.damageType)
-            local gasEnt = AetherGas.GasInflictor()
-            info:SetAttacker(gasEnt)
-            info:SetInflictor(gasEnt)
-            info:SetDamagePosition(eye)
-            ent:TakeDamageInfo(info)
+    -- Немедленная часть урона; отложенная (linger) идёт от дозы в ApplyBody
+    local dmg = P.Damage[g] * c * PERIOD * scale * (passDamage and 1 or leak) * (passDamage and 1 or (1 - P.Linger[g]))
+    if dmg > 0 then Hurt(ent, dmg, def.damageType, eye) end
+    local b = BodyState(ent)
+    if not passDamage then b.dose[g] = (b.dose[g] or 0) + c * leak * PERIOD end
+    -- стойкий агент оседает на коже и одежде (костюм не пускает новое заражение)
+    if P.Deposit[g] > 0 and not suit then
+        if b.contamGas ~= g and b.contam > 0.05 then
+            -- уже заражён другим агентом: остаётся более опасный
+            if P.Damage[g] > P.Damage[b.contamGas] then b.contamGas = g end
+        else
+            b.contamGas = g
         end
-        DamageAcc[ent] = acc
+        b.contam = math.min(3, b.contam + c * P.Deposit[g] * CONTAM_RATE * 30 * PERIOD)
     end
 
     local cough = def.screen and def.screen.cough or 0
@@ -380,11 +495,17 @@ timer.Create("AetherGas.Network.Exposure", PERIOD, 0, function()
     local scale = CV.DamageScale:GetFloat()
     local blind = CV.NPCBlind:GetBool()
     for _, ply in ipairs(player.GetAll()) do
-        if ply:Alive() then ApplyExposure(ply, true, scale) end
+        if ply:Alive() then
+            ApplyExposure(ply, true, scale)
+            ApplyBody(ply, true, scale)
+        end
     end
     for ent in pairs(Tracked) do
         if IsValid(ent) then
-            if ent:Health() > 0 then ApplyExposure(ent, false, scale) end
+            if ent:Health() > 0 then
+                ApplyExposure(ent, false, scale)
+                ApplyBody(ent, false, scale)
+            end
             if blind then BlindCheck(ent) end
         else
             Tracked[ent] = nil

@@ -60,6 +60,9 @@ end)
 | `condenses`, `condenseRate`, `condenseTemp` | конденсация на холодных стенах (пар) |
 | `extinguishes` | тушит огонь внутри облака |
 | `screen` | экранные эффекты: `cough`, `distortion`, `blur`, `narrow`, `darken`, `fog`, `shake` (0..1+) и `tint` (Color) |
+| `clearance` [30], `linger` [0.25] | время выведения дозы (с) и доля урона и эффектов от накопленной дозы |
+| `deposit` [0] | доля в секунду, оседающая на пол и кожу (заражение) |
+| `jtCooling` [0] | на сколько °C газ охлаждается при выпуске из баллона |
 | `grenade` [{8, 16, 30}] | профиль гранаты: скорость, длительность, струя вверх |
 
 Скины моделей есть только у газов самого Aether. Сторонний газ на гранате и баллоне получает нейтральный скин 0.
@@ -91,7 +94,7 @@ end)
 | `API.Ignite(pos)` | поджечь газ в точке; если смесь в пределах воспламенения, начнётся цепная детонация |
 | `API.Clear()` | удалить весь газ и все источники |
 | `API.GiveMask(ply, filterSeconds)`, `API.RemoveMask(ply, drop)` | противогаз Aether |
-| `API.RegisterMaskProvider(name, fn, opts)` | `fn(ply, gasDef)` возвращает защиту дыхания 0..1 (или `true`); урон Aether умножается на (1 − защита) . `opts.passDamage = true`: Aether всё равно наносит урон газа, чтобы ваша маска поглотила его в `EntityTakeDamage` и потратила свой фильтр |
+| `API.RegisterMaskProvider(name, fn, opts)` | `fn(ply, gasDef)` возвращает защиту дыхания 0..1 (или `true`); урон Aether умножается на (1 − защита). `opts.passDamage = true`: Aether всё равно наносит урон газа, чтобы ваша маска поглотила его в `EntityTakeDamage` и потратила свой фильтр |
 | `API.SetCustomGas(slot, flat)` | задать параметры `"custom_1"`…`"custom_4"`; `flat` — поля из `AetherGas.CustomGasFields` |
 
 Всё, что вы делаете на сервере, доходит до клиентов маленькими событиями. Сами сетки газа по сети не отправляйте.
@@ -116,7 +119,7 @@ c:SetValve(true)
 | `AetherGas.CustomGasChanged` | shared | `(name, def)`: изменён слот своего газа |
 | `AetherGas.GridRebuilt` | shared | `()`: сменился размер вокселя, весь газ пропал |
 | `AetherGas.ClientReady` | server | `(ply)`: клиент загрузился; отправьте ему своё состояние |
-| `AetherGas.PreExposure` | server | `(ent, gasName, conc)` → `false` пропускает урон и эффекты на этот тик (0.25 с) |
+| `AetherGas.PreExposure`, `Aether_PreGasExposure` | server | `(ent, gasName, conc, deltaDose)` → `false` пропускает урон и эффекты на этот тик (0.25 с) |
 | `AetherGas.HasGasMask` | server | `(ply)` → `true` или 0..1: защита дыхания вашего мода |
 | `AetherGas.HasGasSuit` | server | `(ply)` → `true`: защита кожи (зарин, иприт) |
 | `AetherGas.ShouldBlind` | server | `(npc, enemy)` → `false`: дым не ослепляет этого NPC |

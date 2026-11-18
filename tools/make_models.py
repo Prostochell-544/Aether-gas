@@ -747,7 +747,13 @@ def label_plate(text, aspect, bg, fg, stripe=None):
     if stripe:
         stripes(img, (0, 0, h * 1.2, h), colors=stripe, width=14)
         stripes(img, (w - h * 1.2, 0, w, h), colors=stripe, width=14)
-    text_centered(d, (0, 4, w, h - 4), text, font("impact.ttf", int(h * 0.72)), fg)
+    x0 = int(h * 1.3) if stripe else 10
+    size = int(h * 0.72)
+    fnt = font("impact.ttf", size)
+    while size > 10 and d.textlength(text, font=fnt) > w - 2 * x0:
+        size -= 2
+        fnt = font("impact.ttf", size)
+    text_centered(d, (x0, 4, w - x0, h - 4), text, fnt, fg)
     d.rectangle([0, 0, w - 1, h - 1], outline=(20, 20, 20), width=3)
     return img
 
@@ -897,25 +903,29 @@ def tex_sprayer_tank():
 
 
 def tex_hazmat():
-    """Свёрнутый костюм химзащиты: жёлтая прорезиненная ткань со складками, чёрные ремни, табличка CBRN."""
+    """Кейс CBRN-комплекта: жёлтый ударопрочный пластик, чёрные резиновые накладки и ручка, стальные
+    защёлки, табличка «HAZMAT SUIT» со знаком биологической опасности."""
     S = 512
     img = Image.new("RGB", (S, S))
-    cloth = noise_img((S, 256), (222, 186, 38), 8, 151, 1.4)
-    d = ImageDraw.Draw(cloth)
-    rnd = random.Random(151)
-    for _ in range(26):   # складки
-        y = rnd.uniform(0, 256)
-        d.line([(0, y), (S, y + rnd.uniform(-20, 20))], fill=(196, 160, 30), width=rnd.randint(2, 5))
-    paste_region(img, cloth.filter(ImageFilter.GaussianBlur(1.0)), R_PAINT)
-    strap = noise_img((256, 256), (30, 30, 32), 5, 152, 0.6)
-    ds = ImageDraw.Draw(strap)
-    for x in range(0, 256, 6):
-        ds.line([(x, 0), (x, 256)], fill=(22, 22, 24))
-    paste_region(img, strap, R_DARK)
-    paste_region(img, metal((256, 128), (150, 152, 156), 153), R_HOUSING)
-    # табличка лежит на верхней грани (+Z): её развёртка зеркальна боковым — надпись отражаем
-    paste_region(img, label_plate("HAZMAT SUIT  CBRN", 2.2, (24, 24, 24), (236, 200, 40)).transpose(Image.FLIP_LEFT_RIGHT),
-                 R_PLATE)
+    plastic = noise_img((S, 256), (226, 188, 34), 4, 151, 2.2)
+    wear(plastic, 151, 40, (240, 210, 90))
+    paste_region(img, plastic, R_PAINT)
+    paste_region(img, noise_img((256, 256), (28, 28, 30), 4, 152, 1.0), R_DARK)
+    paste_region(img, metal((256, 128), (160, 162, 166), 153), R_HOUSING)
+    h, w = 96, 288
+    plate = Image.new("RGB", (w, h), (24, 24, 24))
+    d = ImageDraw.Draw(plate)
+    # знак биологической опасности слева (упрощённый: три кольца вокруг центра)
+    cx, cy, r = 48, 48, 15
+    for k in range(3):
+        ang = math.radians(90 + k * 120)
+        x, y = cx + math.cos(ang) * r * 0.9, cy - math.sin(ang) * r * 0.9
+        d.ellipse([x - r, y - r, x + r, y + r], outline=(236, 200, 40), width=6)
+    d.ellipse([cx - 6, cy - 6, cx + 6, cy + 6], fill=(236, 200, 40))
+    text_centered(d, (88, 6, w - 8, 60), "HAZMAT SUIT", font("impact.ttf", 36), (236, 200, 40))
+    text_centered(d, (88, 60, w - 8, 90), "CBRN  LEVEL A", font("consolab.ttf", 20), (236, 200, 40))
+    d.rectangle([0, 0, w - 1, h - 1], outline=(236, 200, 40), width=3)
+    paste_region(img, plate, R_PLATE)
     return img
 
 
@@ -1245,23 +1255,33 @@ def model_flare():
 
 
 def model_hazmat():
-    """Свёрнутый костюм химзащиты (тюк на полу): два слоя ткани, ремни вокруг с пряжками, табличка сверху."""
+    """Кейс CBRN-комплекта (16×11×5) с противогазом сверху: корпус и крышка со швом, резиновые накладки
+    по углам, ручка и защёлки спереди (+X), табличка на передней стенке. Противогаз — меш model_gasmask,
+    лежит лицом вверх (второй материал «gasmask» из той же папки)."""
     mat = "hazmat"
     parts = [
-        box(mat, R_PAINT, (-8, -5.5, 0), (8, 5.5, 3.2)),
-        box(mat, R_PAINT, (-7.6, -5.2, 3.2), (7.6, 5.2, 6)),          # второй слой (сложенный капюшон)
-        box(mat, R_PLATE, (-4.5, -1.6, 6.0), (2.5, 1.6, 6.08), fit=False),
+        box(mat, R_PAINT, (-8, -5.5, 0), (8, 5.5, 3.3)),               # корпус
+        box(mat, R_DARK, (-8.05, -5.55, 3.3), (8.05, 5.55, 3.55)),     # уплотнитель шва
+        box(mat, R_PAINT, (-8, -5.5, 3.55), (8, 5.5, 5.2)),            # крышка
+        box(mat, R_PLATE, (8.0, -3.6, 0.5), (8.06, 3.6, 2.9), fit=False),   # табличка спереди
     ]
-    for x in (-5.6, 5.6):   # ремень: бока + верх, повторяет форму тюка
-        parts.append(box(mat, R_DARK, (x - 0.8, -5.75, -0.02), (x + 0.8, -5.5, 3.2)))
-        parts.append(box(mat, R_DARK, (x - 0.8, 5.5, -0.02), (x + 0.8, 5.75, 3.2)))
-        parts.append(box(mat, R_DARK, (x - 0.8, -5.45, 3.2), (x + 0.8, -5.2, 6.0)))
-        parts.append(box(mat, R_DARK, (x - 0.8, 5.2, 3.2), (x + 0.8, 5.45, 6.0)))
-        parts.append(box(mat, R_DARK, (x - 0.8, -5.45, 6.0), (x + 0.8, 5.45, 6.2)))
-        parts.append(box(mat, R_HOUSING, (x - 1.0, 5.75, 1.0), (x + 1.0, 5.95, 2.4)))   # пряжка
-    m = combine(*parts)
-    phys = box("phys", R_PAINT, (-8, -5.8, 0), (8, 5.8, 6.2))
-    return m, phys, [("root", -1, (0, 0, 0))], 6, "rubber", None
+    for x in (-8.2, 7.6):          # резиновые бамперы на торцах
+        for y in (-5.7, 4.9):
+            parts.append(box(mat, R_DARK, (x, y, -0.05), (x + 0.6, y + 0.8, 5.25)))
+    for y in (-4.2, 3.4):          # стальные защёлки на шве
+        parts.append(box(mat, R_HOUSING, (8.0, y, 2.7), (8.35, y + 0.8, 4.2)))
+    parts.append(box(mat, R_DARK, (8.0, -2.2, 3.7), (8.3, -1.6, 4.7)))   # стойки ручки
+    parts.append(box(mat, R_DARK, (8.0, 1.6, 3.7), (8.3, 2.2, 4.7)))
+    parts.append(box(mat, R_DARK, (8.3, -2.2, 4.3), (9.0, 2.2, 4.75)))   # ручка
+    mask = model_gasmask()[0]
+    # без ремней оголовья (всё, что целиком за затылком x < −2.4): маска лежит плоско лицом вверх
+    mask.tris = [t for t in mask.tris if max(v[0][0] for v in t[2]) > -2.4]
+    M = rot_axis((0, 1, 0), -math.pi / 2) * 0.72          # лицом вверх, 72 % размера
+    zs = [(M @ np.array(v[0]))[2] for t in mask.tris for v in t[2]]
+    case = combine(*parts)
+    case.extend(mask, M, (-1.5, 0.3, 5.2 - min(zs)))
+    phys = box("phys", R_PAINT, (-8.2, -5.7, 0), (9.0, 5.7, 5.3))
+    return case, phys, [("root", -1, (0, 0, 0))], 8, "plastic", None
 
 
 def model_emitter():

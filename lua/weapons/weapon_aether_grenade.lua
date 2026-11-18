@@ -179,6 +179,7 @@ end
 function SWEP:DrawHUD()
     local def = AetherGas.GetGas(self:CurrentGas())
     if not def then return end
-    draw.SimpleTextOutlined("Gas: " .. def.printName .. (self.FixedGas and "" or "   [R] switch"), "DermaLarge", ScrW() * 0.5, ScrH() - 120,
+    draw.SimpleTextOutlined(AetherGas.L("hud.grenade", AetherGas.GasName(def)) ..
+        (self.FixedGas and "" or AetherGas.L("hud.grenade_switch")), "DermaLarge", ScrW() * 0.5, ScrH() - 120,
         def.color, TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER, 1, color_black)
 end

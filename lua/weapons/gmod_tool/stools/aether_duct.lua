@@ -14,20 +14,23 @@ TOOL.Information = {
 }
 
 if CLIENT then
-    language.Add("tool.aether_duct.name", "Gas Duct / Hose")
-    language.Add("tool.aether_duct.desc", "Connect a canister to a hose nozzle, or an intake vent to an exhaust vent")
-    language.Add("tool.aether_duct.left", "Select a gas canister, or place / select an intake vent")
-    language.Add("tool.aether_duct.left_1", "Place the hose nozzle / exhaust vent")
-    language.Add("tool.aether_duct.right", "Disconnect the hose or duct of the aimed object")
-    language.Add("tool.aether_duct.reload", "Cancel")
-    language.Add("tool.aether_duct.rope", "Draw the hose / duct pipe")
-    language.Add("Undone_aether_duct", "Undone Gas Duct")
+    AetherGas.OnLanguage("tool.duct", function()
+        local L = AetherGas.L
+        language.Add("tool.aether_duct.name", L("tool.duct.name"))
+        language.Add("tool.aether_duct.desc", L("tool.duct.desc"))
+        language.Add("tool.aether_duct.left", L("tool.duct.left"))
+        language.Add("tool.aether_duct.left_1", L("tool.duct.left_1"))
+        language.Add("tool.aether_duct.right", L("tool.duct.right"))
+        language.Add("tool.aether_duct.reload", L("tool.duct.reload"))
+        language.Add("tool.aether_duct.rope", L("tool.duct.rope"))
+        language.Add("Undone_aether_duct", L("tool.duct.undone"))
+    end)
 end
 
 local HOSE_WIDTH, DUCT_WIDTH = 1.5, 3.5
 
-local function Hint(ply, text)
-    if IsValid(ply) then ply:PrintMessage(HUD_PRINTCENTER, text) end
+local function Hint(ply, key)
+    if IsValid(ply) then AetherGas.Notify(ply, 2, key) end
 end
 local CANISTER_VALVE = Vector(2.8, 0, 41.5)
 
@@ -57,13 +60,13 @@ function TOOL:LeftClick(tr)
         local ent = tr.Entity
         if IsValid(ent) and (ent:GetClass() == "aether_canister" or (ent:GetClass() == "aether_vent" and not ent:GetIsOutlet())) then
             self.First = ent
-            Hint(ply, ent:GetClass() == "aether_canister" and "Cylinder selected: click where the hose nozzle goes"
-                or "Intake selected: click where the exhaust vent goes")
+            Hint(ply, ent:GetClass() == "aether_canister" and "tool.duct.hint_cyl"
+                or "tool.duct.hint_intake_sel")
         elseif not IsValid(ent) or ent:IsWorld() then
             self.First = Place("aether_vent", tr, ply)
             if not IsValid(self.First) then return false end
             self.FirstCreated = true
-            Hint(ply, "Intake vent placed: click where the exhaust vent goes")
+            Hint(ply, "tool.duct.hint_intake")
         else
             return false
         end
@@ -89,12 +92,12 @@ function TOOL:LeftClick(tr)
 
     if isHose then
         first:SetHose(out)
-        Hint(ply, "Hose connected: press E on the cylinder or the nozzle to open the valve")
+        Hint(ply, "tool.duct.hint_hose")
     else
         first:SetLink(out)
         out.Inlet = first
         if first:GetOn() then first:SetActive(false) first:SetActive(true) end
-        Hint(ply, "Duct connected: press E on a vent to start pumping")
+        Hint(ply, "tool.duct.hint_duct")
     end
 
     undo.Create("aether_duct")
@@ -145,7 +148,7 @@ end
 
 function TOOL.BuildCPanel(panel)
     panel:AddControl("Header", { Description = "#tool.aether_duct.desc" })
-    panel:Help("Canister → hose: LMB on the canister, then LMB where the nozzle should be. Open the valve (E) — gas flows out of the nozzle.")
-    panel:Help("Duct: LMB on a wall/floor places the intake vent, second LMB places the exhaust vent. Press E on a vent to start pumping: the intake sucks gas in front of its grille and the exhaust blows the same gas out.")
+    panel:Help(AetherGas.L("tool.duct.help1"))
+    panel:Help(AetherGas.L("tool.duct.help2"))
     panel:CheckBox("#tool.aether_duct.rope", "aether_duct_rope")
 end

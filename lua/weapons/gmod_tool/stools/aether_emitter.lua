@@ -8,14 +8,17 @@ TOOL.ClientConVar["rate"]     = "5"
 TOOL.ClientConVar["duration"] = "6"
 
 if CLIENT then
-    language.Add("tool.aether_emitter.name", "Gas Emitter")
-    language.Add("tool.aether_emitter.desc", "Place gas emitters or release puffs of gas")
-    language.Add("tool.aether_emitter.left", "Place emitter (E on it toggles)")
-    language.Add("tool.aether_emitter.right", "One-shot release at the aimed point")
-    language.Add("tool.aether_emitter.reload", "Remove all gas (superadmin)")
-    language.Add("Undone_aether_emitter", "Undone Gas Emitter")
-    language.Add("Cleanup_aether_emitters", "Gas Emitters")
-    language.Add("Cleaned_aether_emitters", "Cleaned up all Gas Emitters")
+    AetherGas.OnLanguage("tool.emitter", function()
+        local L = AetherGas.L
+        language.Add("tool.aether_emitter.name", L("tool.emitter.name"))
+        language.Add("tool.aether_emitter.desc", L("tool.emitter.desc"))
+        language.Add("tool.aether_emitter.left", L("tool.emitter.left"))
+        language.Add("tool.aether_emitter.right", L("tool.emitter.right"))
+        language.Add("tool.aether_emitter.reload", L("tool.emitter.reload"))
+        language.Add("Undone_aether_emitter", L("tool.emitter.undone"))
+        language.Add("Cleanup_aether_emitters", L("tool.emitter.cleanup"))
+        language.Add("Cleaned_aether_emitters", L("tool.emitter.cleaned"))
+    end)
 end
 TOOL.Information = { "left", "right", "reload" }
 
@@ -63,11 +66,12 @@ end
 
 function TOOL.BuildCPanel(panel)
     panel:AddControl("Header", { Description = "#tool.aether_emitter.desc" })
-    local combo = panel:ComboBox("Gas", "aether_emitter_gas")
+    local L = AetherGas.L
+    local combo = panel:ComboBox(L("tool.emitter.gas"), "aether_emitter_gas")
     for id = 1, AetherGas.GasCount do
         local def = AetherGas.GasById[id]
-        combo:AddChoice(def.printName, def.name)
+        combo:AddChoice(AetherGas.GasName(def), def.name)
     end
-    panel:NumSlider("Release rate", "aether_emitter_rate", 0.5, 30, 1)
-    panel:NumSlider("One-shot duration (s)", "aether_emitter_duration", 0.5, 120, 1)
+    panel:NumSlider(L("tool.emitter.rate"), "aether_emitter_rate", 0.5, 30, 1)
+    panel:NumSlider(L("tool.emitter.duration"), "aether_emitter_duration", 0.5, 120, 1)
 end

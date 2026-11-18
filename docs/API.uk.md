@@ -60,6 +60,9 @@ end)
 | `condenses`, `condenseRate`, `condenseTemp` | конденсація на холодних стінах (пара) |
 | `extinguishes` | гасить вогонь усередині хмари |
 | `screen` | екранні ефекти: `cough`, `distortion`, `blur`, `narrow`, `darken`, `fog`, `shake` (0..1+) і `tint` (Color) |
+| `clearance` [30], `linger` [0.25] | час виведення дози (с) і частка шкоди та ефектів від накопиченої дози |
+| `deposit` [0] | частка за секунду, що осідає на підлогу й шкіру (зараження) |
+| `jtCooling` [0] | на скільки °C газ охолоджується при випуску з балона |
 | `grenade` [{8, 16, 30}] | профіль гранати: швидкість, тривалість, струмінь угору |
 
 Скіни моделей є лише в газів самого Aether. Сторонній газ на гранаті й балоні отримує нейтральний скін 0.
@@ -91,7 +94,7 @@ end)
 | `API.Ignite(pos)` | підпалити газ у точці; якщо суміш у межах займання, почнеться ланцюгова детонація |
 | `API.Clear()` | прибрати весь газ і всі джерела |
 | `API.GiveMask(ply, filterSeconds)`, `API.RemoveMask(ply, drop)` | протигаз Aether |
-| `API.RegisterMaskProvider(name, fn, opts)` | `fn(ply, gasDef)` повертає захист дихання 0..1 (або `true`); шкода Aether множиться на (1 − захист) . `opts.passDamage = true`: Aether однаково завдає шкоди газу, щоб ваша маска поглинула її в `EntityTakeDamage` і витратила свій фільтр |
+| `API.RegisterMaskProvider(name, fn, opts)` | `fn(ply, gasDef)` повертає захист дихання 0..1 (або `true`); шкода Aether множиться на (1 − захист). `opts.passDamage = true`: Aether однаково завдає шкоди газу, щоб ваша маска поглинула її в `EntityTakeDamage` і витратила свій фільтр |
 | `API.SetCustomGas(slot, flat)` | задати параметри `"custom_1"`…`"custom_4"`; `flat` — поля з `AetherGas.CustomGasFields` |
 
 Усе, що ви робите на сервері, доходить до клієнтів маленькими подіями. Самі сітки газу мережею не надсилайте.
@@ -116,7 +119,7 @@ c:SetValve(true)
 | `AetherGas.CustomGasChanged` | shared | `(name, def)`: змінено слот власного газу |
 | `AetherGas.GridRebuilt` | shared | `()`: змінився розмір воксела, весь газ зник |
 | `AetherGas.ClientReady` | server | `(ply)`: клієнт завантажився; надішліть йому свій стан |
-| `AetherGas.PreExposure` | server | `(ent, gasName, conc)` → `false` пропускає шкоду й ефекти на цей тік (0.25 с) |
+| `AetherGas.PreExposure`, `Aether_PreGasExposure` | server | `(ent, gasName, conc, deltaDose)` → `false` пропускає шкоду й ефекти на цей тік (0.25 с) |
 | `AetherGas.HasGasMask` | server | `(ply)` → `true` або 0..1: захист дихання вашого мода |
 | `AetherGas.HasGasSuit` | server | `(ply)` → `true`: захист шкіри (зарин, іприт) |
 | `AetherGas.ShouldBlind` | server | `(npc, enemy)` → `false`: дим не засліплює цього NPC |

@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.11.0 — separate hazmat suit, three languages
+
+- **Hazmat suit protects the skin only.** It no longer works as a gas mask (no respirator, no mask overlay). Breathing is protected by a gas mask, the skin by the suit: sarin and mustard gas need both. Damage = inhaled part × (1 − mask) + skin part × (1 − suit). The suit still halves steam burns and stops new contamination.
+- **No more washing off in water.** Contamination keeps burning until the agent wears off, and a suit put on after you are contaminated no longer helps.
+- The Aether suit no longer sets the GMod Bombs `hazsuited` flag.
+- **Interface in English, Russian and Ukrainian.** Q menu, sprayer and custom gas editor, tool texts, HUD, gas names and server messages. Choose in Q → Utilities → Aether Gas → Language, or `aether_language auto|en|ru|uk` (Auto follows the game language). Server messages are sent as string keys, so every player reads them in their own language.
+- API: `AetherGas.L(key, ...)`, `AetherGas.GasName(def)`, `AetherGas.Notify(ply, mode, key, ...)` (server).
+
+## 0.10.0 — dose, contamination, cold gas, Wiremod, Z-City and GSmoke
+
+- **Dose and lasting effects.** Inhaled gas builds up a dose that leaves the body over time (`clearance`, seconds). Part of the harm and screen effects (`linger`) comes from the dose, so sarin and mustard gas keep hurting after you leave the cloud, tear gas keeps the tears going, CO keeps the screen dark, and coughing continues until the dose clears.
+- **Contamination.** Persistent agents (mustard gas, sarin, tear gas, a little chlorine; `deposit`) settle on floors and slowly off-gas for minutes. Without a hazmat suit they also settle on the player: skin burns and a trace of gas around you until you wash it off in water. The HUD shows "CONTAMINATED".
+- **Cold gas (Joule–Thomson / evaporation).** Gas released from a cylinder comes out cold (`jtCooling`): CO2, ammonia and chlorine strongly, methane and H2S less, hydrogen not at all (above its inversion temperature it does not cool). White condensation mist at the valve and leaks; frost at the screen edges point-blank. Cold gas sinks.
+- **Wiremod.** Cylinders, emitters, fans, blowers and vents get inputs `On`/`Open`, `Toggle`, `Rate`, `Detonate` (cylinder) and outputs `On`, `GasAmount`, `IsPunctured`, `Leaks`.
+- **Valve Group tool.** Link many devices to one key and open them all at once; R toggles every device in a radius.
+- Hazmat suit comes off with E+Alt or the Q-menu button, not only `!suit`.
+- **Compatibility:** Z-City (its M40 gas mask and Combine players), GChem (mask and suit), GSmoke (exhaled cigarette and vape smoke enters the grid; a lit cigarette ignites flammable gas).
+- New harmless `tobacco_smoke` gas. Custom gases get the new fields in the editor.
+- API: `AetherGas.PreExposure` / `Aether_PreGasExposure` hooks get the dose increment as the 4th argument; `API.GetDose`, `API.Decontaminate`, `API.SetDeviceOn`.
+
 ## 0.9.2 — fixes from Workshop feedback
 
 - Gas cylinders can be punctured: bullets, buckshot, crossbow bolts, blades and hard impacts open up to 3 leaks that jet gas out with thrust and drain the cylinder, whatever the valve state.

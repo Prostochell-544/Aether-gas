@@ -75,7 +75,8 @@ function SWEP:CycleDisplay()
     RunConsoleCommand("aether_analyzer_screen", scr and "1" or "0")
     RunConsoleCommand("aether_analyzer_hud", hud and "1" or "0")
     surface.PlaySound("buttons/button16.wav")
-    notification.AddLegacy("Analyzer: " .. (scr and hud and "device screen + HUD" or scr and "device screen only" or "HUD only"),
+    local L = AetherGas.L
+    notification.AddLegacy(L("hud.an_mode", scr and hud and L("hud.an_both") or scr and L("hud.an_screen") or L("hud.an_hudonly")),
         NOTIFY_GENERIC, 2)
 end
 
@@ -230,10 +231,11 @@ function SWEP:DrawHUD()
     if not cvHud:GetBool() then return end
     local x, y, w, h = ScrW() - 320, ScrH() * 0.5 - 80, 290, 150
     draw.RoundedBox(6, x, y, w, h, Color(10, 14, 12, 220))
-    draw.SimpleText("AETHER GAS ANALYZER", "DermaDefaultBold", x + 12, y + 10, Color(150, 255, 150))
-    draw.SimpleText(self:GetRemote() and "probe: remote [LMB]   display [RMB]" or "probe: breathing zone [LMB]   display [RMB]", "DermaDefault", x + 12, y + 28, Color(140, 160, 140))
-    draw.SimpleText("Gas:   " .. (def and def.printName or "—"), "DermaLarge", x + 12, y + 48, def and def.color or color_white)
-    draw.SimpleText(string.format("Conc:  %5.1f %%    Temp: %4.0f C", c * 100, t), "DermaDefaultBold", x + 12, y + 86, color_white)
+    local L = AetherGas.L
+    draw.SimpleText(L("hud.an_title"), "DermaDefaultBold", x + 12, y + 10, Color(150, 255, 150))
+    draw.SimpleText(self:GetRemote() and L("hud.an_remote") or L("hud.an_local"), "DermaDefault", x + 12, y + 28, Color(140, 160, 140))
+    draw.SimpleText(L("hud.an_gas", def and AetherGas.GasName(def) or "-"), "DermaLarge", x + 12, y + 48, def and def.color or color_white)
+    draw.SimpleText(L("hud.an_conc", c * 100, t), "DermaDefaultBold", x + 12, y + 86, color_white)
     surface.SetDrawColor(40, 50, 45, 255)
     surface.DrawRect(x + 12, y + 106, w - 24, 8)
     surface.SetDrawColor(scol.r, scol.g, scol.b, 255)

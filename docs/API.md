@@ -60,6 +60,9 @@ Any field you leave out takes the default shown in brackets.
 | `condenses`, `condenseRate`, `condenseTemp` | condensation on cold walls (steam) |
 | `extinguishes` | puts out fire inside the cloud |
 | `screen` | screen effects: `cough`, `distortion`, `blur`, `narrow`, `darken`, `fog`, `shake` (0..1+) and `tint` (Color) |
+| `clearance` [30], `linger` [0.25] | dose clearance time (s) and the share of harm and effects that comes from the accumulated dose |
+| `deposit` [0] | share per second that settles on floors and skin (contamination) |
+| `jtCooling` [0] | °C the gas cools when released from a cylinder |
 | `grenade` [{8, 16, 30}] | grenade profile: rate, duration, upward jet speed |
 
 Models have skins only for Aether's own gases. A third-party gas uses the neutral skin 0 on grenades and cylinders.
@@ -91,7 +94,7 @@ Models have skins only for Aether's own gases. A third-party gas uses the neutra
 | `API.Ignite(pos)` | ignites gas at a point, which starts a chain detonation if the mixture is within its limits |
 | `API.Clear()` | removes all gas and sources |
 | `API.GiveMask(ply, filterSeconds)`, `API.RemoveMask(ply, drop)` | Aether gas mask |
-| `API.RegisterMaskProvider(name, fn, opts)` | `fn(ply, gasDef)` returns respiratory protection 0..1 (or `true`); Aether damage is multiplied by (1 − protection) . `opts.passDamage = true`: Aether still deals the gas damage so your mask can absorb it in `EntityTakeDamage` and spend its own filter |
+| `API.RegisterMaskProvider(name, fn, opts)` | `fn(ply, gasDef)` returns respiratory protection 0..1 (or `true`); Aether damage is multiplied by (1 − protection). `opts.passDamage = true`: Aether still deals the gas damage so your mask can absorb it in `EntityTakeDamage` and spend its own filter |
 | `API.SetCustomGas(slot, flat)` | sets the parameters of `"custom_1"`…`"custom_4"`; `flat` uses the fields of `AetherGas.CustomGasFields` |
 
 Everything you do on the server reaches clients as small events; never send gas grids yourself.
@@ -116,7 +119,7 @@ c:SetValve(true)
 | `AetherGas.CustomGasChanged` | shared | `(name, def)`: a custom slot was edited |
 | `AetherGas.GridRebuilt` | shared | `()`: voxel size changed, so all gas is gone |
 | `AetherGas.ClientReady` | server | `(ply)`: the client has loaded; send it your own state |
-| `AetherGas.PreExposure` | server | `(ent, gasName, conc)` → `false` skips damage and effects for this tick (0.25 s) |
+| `AetherGas.PreExposure`, `Aether_PreGasExposure` | server | `(ent, gasName, conc, deltaDose)` → `false` skips damage and effects for this tick (0.25 s) |
 | `AetherGas.HasGasMask` | server | `(ply)` → `true` or 0..1: your mod's respiratory protection |
 | `AetherGas.HasGasSuit` | server | `(ply)` → `true`: skin protection (sarin, mustard gas) |
 | `AetherGas.ShouldBlind` | server | `(npc, enemy)` → `false`: the NPC is not blinded by smoke |

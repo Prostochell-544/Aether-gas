@@ -90,7 +90,7 @@ function SWEP:PrimaryAttack()
     if not def then return end
     if not AetherGas.CanUseGasGun(ply, def.name) then
         if (self.DenyMsg or 0) < CurTime() then
-            ply:ChatPrint("[Aether] Only admins can spray toxic or flammable gases on this server.")
+            AetherGas.Notify(ply, 0, "hint.gun_admin")
             self.DenyMsg = CurTime() + 3
         end
         return
@@ -232,9 +232,9 @@ end
 
 function SWEP:DrawHUD()
     local def = GunGas()
-    local mode = GetConVar("aether_gun_mode"):GetInt() == 2 and "jet" or "at aim"
-    local txt = string.format("%s   %.1f/s   %s   [RMB] settings  [R] vacuum", def.printName,
-        GetConVar("aether_gun_rate"):GetFloat(), mode)
+    local L = AetherGas.L
+    local mode = GetConVar("aether_gun_mode"):GetInt() == 2 and L("hud.gun_jet") or L("hud.gun_aim")
+    local txt = L("hud.gun", AetherGas.GasName(def), GetConVar("aether_gun_rate"):GetFloat(), mode)
     draw.SimpleTextOutlined(txt, "DermaLarge", ScrW() * 0.5, ScrH() - 120, def.color, TEXT_ALIGN_CENTER,
         TEXT_ALIGN_CENTER, 1, color_black)
     if GetConVar("aether_gun_mode"):GetInt() == 1 then   -- куда ляжет облако

@@ -25,7 +25,7 @@ local cvEffects = CreateClientConVar("aether_effects", "1", true, false, "Aether
 local GRAD_L, GRAD_R = Material("vgui/gradient-l"), Material("vgui/gradient-r")
 local GRAD_U, GRAD_D = Material("vgui/gradient-u"), Material("vgui/gradient-d")
 
-local state = { distortion = 0, darken = 0, fog = 0, tint = 0, blur = 0, narrow = 0, dose = 0, r = 255, g = 255, b = 255 }
+local state = { distortion = 0, darken = 0, fog = 0, tint = 0, blur = 0, narrow = 0, dose = 0, frost = 0, r = 255, g = 255, b = 255 }
 local dspActive = false
 local breath
 
@@ -45,14 +45,14 @@ hook.Add("Think", "AetherGas.Effects.Update", function()
     if not IsValid(ply) then return end
     local dt = FrameTime()
     local alive = ply:Alive()
-    local suit = alive and ply:GetNW2Bool("AetherSuit", false)
-    local masked = alive and (ply:GetNW2Bool("AetherMask", false) or suit)
+    -- костюм химзащиты закрывает только кожу: эффекты дыхания и глаз снимает противогаз
+    local masked = alive and ply:GetNW2Bool("AetherMask", false)
 
-    local g, c = 0, 0
+    local g, c, tEye = 0, 0, 20
     if alive and cvEffects:GetBool() then
         -- как на сервере (sv_network SampleBody): глаза целиком, пояс 70 %, ноги 30 %
         local e = ply:EyePos()
-        g, c = Solver.Sample(e.x, e.y, e.z)
+        g, c, tEye = Solver.Sample(e.x, e.y, e.z)
         local m = ply:WorldSpaceCenter()
         local gm, cm = Solver.Sample(m.x, m.y, m.z)
         if gm ~= 0 and cm * 0.7 > c then g, c = gm, cm * 0.7 end
@@ -60,9 +60,16 @@ hook.Add("Think", "AetherGas.Effects.Update", function()
         local gf, cf = Solver.Sample(f.x, f.y, f.z + 10)
         if gf ~= 0 and cf * 0.3 > c then g, c = gf, cf * 0.3 end
     end
+    -- Накопленная доза (сервер, AetherDose): эффекты держатся и после выхода из облака, маска их уже не снимает
+    local lingering = false
+    local dg, dl = ply:GetNW2Int("AetherDoseGas", 0), ply:GetNW2Float("AetherDose", 0)
+    if alive and dg ~= 0 and dl > c then g, c, lingering = dg, min(1, dl), true end
     local def = g ~= 0 and AetherGas.GasById[g]
     local scr = def and def.screen or nil
-    local protected = def and (suit or (def.maskProtects and (masked or ply:GetNW2Float("AetherExtMask", 0) >= 0.5)))
+    local protected = def and not lingering and def.maskProtects and (masked or ply:GetNW2Float("AetherExtMask", 0) >= 0.5)
+    -- Холодная струя из баллона (Джоуль — Томсон / испарение сжиженного газа): иней по краям экрана
+    local tFrost = (alive and tEye < -5) and min(1, (-5 - tEye) / 50) or 0
+    state.frost = Approach(state.frost, tFrost, 2, 0.3, dt)
 
     local tDist = (scr and scr.distortion or 0) * c * (protected and 0.15 or 1)
     local tFog  = (scr and scr.fog or 0) * c * (masked and 1.4 or 1)
@@ -182,6 +189,11 @@ hook.Add("HUDPaintBackground", "AetherGas.Effects.Overlay", function()
         surface.SetDrawColor(235, 235, 225, 60 * state.blur)
         surface.DrawRect(0, 0, w, h)
     end
+    if state.frost > 0.01 then   -- иней: голубовато-белая виньетка
+        Vignette(w, h, 220 * state.frost, 225, 240, 255)
+        surface.SetDrawColor(220, 235, 255, 35 * state.frost)
+        surface.DrawRect(0, 0, w, h)
+    end
     if state.fog > 0.01 then
         surface.SetDrawColor(235, 238, 242, 200 * state.fog)
         surface.DrawRect(0, 0, w, h)
@@ -193,20 +205,25 @@ hook.Add("HUDPaint", "AetherGas.Effects.MaskHUD", function()
     local ply = LocalPlayer()
     if not IsValid(ply) then return end
     local suit = ply:GetNW2Bool("AetherSuit", false)
+    local contam = ply:GetNW2Float("AetherContam", 0)
+    if contam > 0.05 and ply:Alive() then
+        local def = AetherGas.GetGas(ply:GetNW2Int("AetherContamGas", 0))
+        draw.SimpleTextOutlined(AetherGas.L("hud.contam", def and AetherGas.GasName(def) or "?"),
+            "DermaDefaultBold", ScrW() * 0.5, ScrH() - 104, Color(230, 170, 60), TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER, 1, color_black)
+    end
     if suit then
-        if ply:Alive() and not ply:ShouldDrawLocalPlayer() then DrawMaskView(ScrW(), ScrH()) end
-        draw.SimpleText("HAZMAT SUIT ON   (!suit - take off)", "DermaDefault", ScrW() * 0.5 - 110, ScrH() - 88,
+        draw.SimpleText(AetherGas.L("hud.suit_on"), "DermaDefault", ScrW() * 0.5 - 110, ScrH() - 88,
             Color(236, 200, 40))
     end
     if not ply:GetNW2Bool("AetherMaskOwned", false) then return end
     local worn = ply:GetNW2Bool("AetherMask", false)
-    if worn and not suit and ply:Alive() and not ply:ShouldDrawLocalPlayer() then DrawMaskView(ScrW(), ScrH()) end
+    if worn and ply:Alive() and not ply:ShouldDrawLocalPlayer() then DrawMaskView(ScrW(), ScrH()) end
     local frac = math.Clamp(ply:GetNW2Float("AetherFilter", 0) / AetherGas.CVar.MaskFilter:GetFloat(), 0, 1)
     local w, h = 220, 10
     local x, y = ScrW() * 0.5 - w * 0.5, ScrH() - 60
     local spare = ply:GetNW2Int("AetherSpareFilters", 0)
-    draw.SimpleText((worn and "MASK ON  (!mask or E+R - take off)" or "MASK OFF  (!mask or E+R - put on)") ..
-        (spare > 0 and ("   spare filters: " .. spare) or ""), "DermaDefault", x, y - 14,
+    draw.SimpleText(AetherGas.L(worn and "hud.mask_on" or "hud.mask_off") ..
+        (spare > 0 and AetherGas.L("hud.spare", spare) or ""), "DermaDefault", x, y - 14,
         worn and color_white or Color(255, 210, 120))
     surface.SetDrawColor(0, 0, 0, 160)
     surface.DrawRect(x, y, w, h)

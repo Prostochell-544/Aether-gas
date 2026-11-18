@@ -4,7 +4,7 @@
 AetherGas = AetherGas or {}
 local AetherGas = AetherGas
 
-AetherGas.Version = "0.9.2"
+AetherGas.Version = "0.11.0"
 
 -- Пространства имён модулей. Создаются здесь один раз: модули берут на них ссылки при загрузке, а
 -- lua refresh / lua_openscript не теряет накопленное состояние (таблицы переживают повторный include).
@@ -47,6 +47,7 @@ C.NET_SOLVER       = "AetherGas.Solver"      -- события солвера: �
 C.NET_SNAPSHOT     = "AetherGas.Snapshot"    -- сжатые снимки чанков (синхронизация облаков)
 C.NET_ADMIN_CVAR   = "AetherGas.AdminCVar"   -- меню Q: суперадмин меняет серверные aether_* ConVar'ы
 C.NET_MASK         = "AetherGas.Mask"        -- клиент снимает противогаз
+C.NET_NOTIFY       = "AetherGas.Notify"      -- сообщение игроку: ключ строки + аргументы (перевод на клиенте)
 C.NET_GASDEF       = "AetherGas.GasDef"      -- параметры пользовательского газа (редактор газомёта ↔ сервер)
 
 if SERVER then
@@ -54,6 +55,7 @@ if SERVER then
     util.AddNetworkString(C.NET_ADMIN_CVAR)
     util.AddNetworkString(C.NET_MASK)
     util.AddNetworkString(C.NET_GASDEF)
+    util.AddNetworkString(C.NET_NOTIFY)
     util.AddNetworkString(C.NET_SOLVER)
     util.AddNetworkString(C.NET_PORTAL)
     util.AddNetworkString(C.NET_GRID_RESET)
@@ -113,6 +115,8 @@ Define("FireVFire",    "aether_fire_vfire",    "1",   FL_SHARED,
     "Aether: gas explosions spread vFire fire when vFire is installed (0/1).", 0, 1)
 Define("VFireWind",    "aether_vfire_wind",    "1",   FL_SHARED,
     "Aether: vFire flames lean with Aether wind (0 = vFire keeps its own wind).", 0, 1)
+Define("DebugCanister", "aether_debug_canister", "0", FL_DEBUG,
+    "Aether: печатать в консоль сервера каждое попадание по газовому баллону (тип и величина урона).", 0, 1)
 Define("DebugGrid",    "aether_debug_grid",    "0",   FL_DEBUG,
     "Aether: grid debug overlay (needs developer 1). " ..
     "0 off, 1 closed faces/chunks/queues/bindings, 2 also open faces and cells inside walls.", 0, 2)
@@ -139,7 +143,7 @@ AetherGas.GasParams = P
 local PARAM_FIELDS = {
     "Density", "Diffusion", "Spread", "Cohesion", "Decay", "EmitTemp", "Cooling", "Opacity", "VisionThreshold",
     "Muffle", "Damage", "DamageThreshold", "Slowdown", "FlameMin", "FlameMax", "BlastDamage",
-    "CondenseRate", "CondenseTemp", "IndoorDecay",
+    "CondenseRate", "CondenseTemp", "IndoorDecay", "Clearance", "Linger", "Deposit", "JTCooling",
 }
 for i = 1, #PARAM_FIELDS do
     local name = PARAM_FIELDS[i]
@@ -155,6 +159,7 @@ P.EmitTemp[0], P.Cooling[0], P.Opacity[0], P.VisionThreshold[0] = C.AMBIENT_TEMP
 P.Muffle[0], P.Damage[0], P.DamageThreshold[0], P.Slowdown[0] = 0, 0, NEVER_HIGH, 0
 P.FlameMin[0], P.FlameMax[0], P.BlastDamage[0] = NEVER_HIGH, NEVER_LOW, 0
 P.CondenseRate[0], P.CondenseTemp[0], P.IndoorDecay[0] = 0, NEVER_LOW, 1
+P.Clearance[0], P.Linger[0], P.Deposit[0], P.JTCooling[0] = 30, 0, 0, 0
 
 local DEFAULTS = {
     printName       = "Gas",
@@ -190,6 +195,12 @@ local DEFAULTS = {
     skinDamage      = 0,                 -- доля урона, которую противогаз не снимает (кожное действие);
                                          -- защищает только костюм (GBombs hazsuit / хук AetherGas.HasGasSuit)
     grenade         = { 8, 16, 30 },     -- граната: концентрация/с, длительность с, скорость струи вверх
+    -- Доза (sv_network): вдыхаемое копится в организме и выводится с постоянной clearance (с).
+    -- linger — доля урона и эффектов, идущая от накопленной дозы (продолжается после выхода из облака).
+    clearance       = 30,
+    linger          = 0.25,
+    deposit         = 0,                 -- доля/с, оседающая на пол (заражение, потом медленно испаряется)
+    jtCooling       = 0,                 -- °C: охлаждение при расширении из баллона (Джоуль — Томсон, испарение)
 }
 
 local function Num(value, fallback, lo, hi)
@@ -220,6 +231,10 @@ local function CompileParams(g)
     P.CondenseRate[id]    = g.condenses and g.condenseRate or 0
     P.CondenseTemp[id]    = g.condenses and g.condenseTemp or NEVER_LOW
     P.IndoorDecay[id]     = g.indoorDecay
+    P.Clearance[id]       = g.clearance
+    P.Linger[id]          = g.linger
+    P.Deposit[id]         = g.deposit
+    P.JTCooling[id]       = g.jtCooling
 end
 
 local function RebuildChecksum()
@@ -278,6 +293,10 @@ function AetherGas.RegisterGas(name, def)
     g.condenseTemp    = Num(g.condenseTemp, 60, -100, 2000)
     g.fogDistance     = Num(g.fogDistance, 0, 0, 20000)
     g.skinDamage      = Num(g.skinDamage, 0, 0, 1)
+    g.clearance       = Num(g.clearance, 30, 1, 3600)
+    g.linger          = Num(g.linger, 0.25, 0, 1)
+    g.deposit         = Num(g.deposit, 0, 0, 1)
+    g.jtCooling       = Num(g.jtCooling, 0, 0, 200)
     if not istable(g.grenade) then g.grenade = DEFAULTS.grenade end
     g.blocksVision    = g.blocksVision == true
     g.maskProtects    = g.maskProtects == true
@@ -338,6 +357,7 @@ end
 -- целиком (flood fill), полностью перекрывает обзор и глушит звук.
 AetherGas.RegisterGas("smoke", {
     printName = "Tactical Smoke",
+    clearance = 20, linger = 0,
     density = 1.0, diffusion = 0.22, spread = 0.85, cohesion = 0.45, decay = 0.015,
     emitTemp = 30, cooling = 0.25,
     color = Color(196, 198, 204), opacity = 1.0,
@@ -351,6 +371,7 @@ AetherGas.RegisterGas("smoke", {
 -- DMG_NERVEGAS, а не DMG_POISON: у игроков HL2 урон DMG_POISON постепенно восстанавливается.
 AetherGas.RegisterGas("chlorine", {
     printName = "Chlorine",
+    clearance = 45, linger = 0.3, deposit = 0.004, jtCooling = 50,
     density = 1.8, diffusion = 0.10, spread = 0.35, cohesion = 0.05, decay = 0.006,
     emitTemp = 15, cooling = 0.1,
     color = Color(196, 206, 62), opacity = 0.9,
@@ -366,6 +387,7 @@ AetherGas.RegisterGas("chlorine", {
 -- поэтому детонация начинается с краёв облака и цепочкой уходит внутрь.
 AetherGas.RegisterGas("methane", {
     printName = "Methane",
+    jtCooling = 25,
     density = 0.55, diffusion = 0.20, spread = 0.5, decay = 0.003,
     color = Color(170, 190, 230), opacity = 0.012,
     flammable = true, flameMin = 0.05, flameMax = 0.9, blastDamage = 110, igniteOnBlast = true,
@@ -377,6 +399,7 @@ AetherGas.RegisterGas("methane", {
 -- Обычный фильтр противогаза угарный газ не задерживает (нужен гопкалитовый патрон).
 AetherGas.RegisterGas("co_smoke", {
     printName = "Fire Smoke (CO)",
+    clearance = 90, linger = 0.6,
     density = 0.95, diffusion = 0.16, spread = 0.55, cohesion = 0.1, decay = 0.004,
     emitTemp = 320, cooling = 0.035,
     color = Color(42, 40, 38), opacity = 0.9,
@@ -391,6 +414,7 @@ AetherGas.RegisterGas("co_smoke", {
 -- Горячий пар: быстро поднимается и конденсируется у холодных поверхностей.
 AetherGas.RegisterGas("steam", {
     printName = "Steam",
+    clearance = 5, linger = 0,
     density = 0.65, diffusion = 0.25, spread = 0.45, decay = 0.05,
     emitTemp = 100, cooling = 0.12,
     color = Color(236, 238, 242), opacity = 0.55,
@@ -407,6 +431,7 @@ AetherGas.RegisterGas("steam", {
 -- картинка; противогаз защищает полностью.
 AetherGas.RegisterGas("tear_gas", {
     printName = "Tear Gas (CS)",
+    clearance = 25, linger = 0.6, deposit = 0.006,
     density = 1.15, diffusion = 0.18, spread = 0.6, cohesion = 0.2, decay = 0.012,
     emitTemp = 40, cooling = 0.2,
     color = Color(226, 228, 214), opacity = 0.6,
@@ -422,6 +447,7 @@ AetherGas.RegisterGas("tear_gas", {
 -- противогаз снимает только 70 % (полная защита — костюм). Сужение зрачков и судороги.
 AetherGas.RegisterGas("sarin", {
     printName = "Sarin (GB)",
+    clearance = 120, linger = 0.7, deposit = 0.01,
     density = 1.4, diffusion = 0.14, spread = 0.4, cohesion = 0.02, decay = 0.008,
     color = Color(210, 220, 228), opacity = 0.015,
     damage = 26, damageType = DMG_NERVEGAS, damageThreshold = 0.02, maskProtects = true, skinDamage = 0.3,
@@ -434,6 +460,7 @@ AetherGas.RegisterGas("sarin", {
 -- Нарывное действие через кожу: противогаз снимает только половину урона.
 AetherGas.RegisterGas("mustard", {
     printName = "Mustard Gas (HD)",
+    clearance = 300, linger = 0.85, deposit = 0.03,
     density = 1.7, diffusion = 0.06, spread = 0.25, cohesion = 0.06, decay = 0.0015,
     color = Color(150, 124, 62), opacity = 0.35,
     fogDistance = 700,
@@ -445,6 +472,7 @@ AetherGas.RegisterGas("mustard", {
 -- Сероводород: чуть тяжелее воздуха, копится в подвалах и коллекторах. Смертелен и горюч.
 AetherGas.RegisterGas("h2s", {
     printName = "Hydrogen Sulfide",
+    clearance = 30, linger = 0.2, jtCooling = 30,
     density = 1.19, diffusion = 0.15, spread = 0.45, decay = 0.006,
     color = Color(196, 204, 150), opacity = 0.04,
     damage = 12, damageType = DMG_NERVEGAS, damageThreshold = 0.06, maskProtects = true,
@@ -456,6 +484,7 @@ AetherGas.RegisterGas("h2s", {
 -- Аммиак: легче воздуха, едкий; на влажном воздухе — белёсое облако. Режет глаза.
 AetherGas.RegisterGas("ammonia", {
     printName = "Ammonia",
+    clearance = 30, linger = 0.3, jtCooling = 55,
     density = 0.6, diffusion = 0.2, spread = 0.5, cohesion = 0.08, decay = 0.012,
     emitTemp = -33, cooling = 0.08,   -- выброс сжиженного аммиака холодный: сначала стелется, прогреваясь — всплывает
     color = Color(226, 230, 222), opacity = 0.2,
@@ -468,6 +497,7 @@ AetherGas.RegisterGas("ammonia", {
 -- Водород: самый лёгкий газ — мгновенно уходит вверх; невидим, взрывается сильнее метана.
 AetherGas.RegisterGas("hydrogen", {
     printName = "Hydrogen",
+    linger = 0,
     density = 0.07, diffusion = 0.35, spread = 0.5, decay = 0.006,
     color = Color(220, 230, 255), opacity = 0,
     flammable = true, flameMin = 0.04, flameMax = 0.75, blastDamage = 180, igniteOnBlast = true,
@@ -479,6 +509,7 @@ AetherGas.RegisterGas("hydrogen", {
 -- пеленой; нагреваясь, быстро исчезает. Вытесняет кислород (удушье), замедляет.
 AetherGas.RegisterGas("nitrogen", {
     printName = "Cryogenic Nitrogen Fog",
+    clearance = 10, linger = 0,
     density = 0.97, diffusion = 0.12, spread = 0.5, cohesion = 0.12, decay = 0.07,
     emitTemp = -150, cooling = 0.12,
     color = Color(238, 244, 250), opacity = 0.8,
@@ -495,6 +526,7 @@ AetherGas.RegisterGas("nitrogen", {
 -- в облаке CO2/азота тухнет).
 AetherGas.RegisterGas("co2", {
     printName = "Carbon Dioxide",
+    clearance = 15, linger = 0.2, jtCooling = 75,
     density = 1.52, diffusion = 0.12, spread = 0.45, decay = 0.005,
     emitTemp = 0, cooling = 0.1,
     color = Color(225, 228, 232), opacity = 0.02,
@@ -543,6 +575,17 @@ for i = 1, #AetherGas.CustomSlots do
         screen = {},
     })
 end
+
+-- Выдыхаемый дым сигарет и вейпов (совместимость с GSmoke, sv_compat): безвредный, тонкий, быстро тает.
+AetherGas.RegisterGas("tobacco_smoke", {
+    printName = "Tobacco Smoke",
+    density = 1.0, diffusion = 0.25, spread = 0.5, cohesion = 0.03, decay = 0.08, indoorDecay = 0.6,
+    emitTemp = 34, cooling = 0.3,
+    color = Color(214, 216, 220), opacity = 0.35,
+    clearance = 10, linger = 0,
+    grenade = { 4, 10, 10 },
+    screen = {},
+})
 
 -- Точка расширения для сторонних аддонов (вызывать RegisterGas только из shared-кода).
 hook.Run("AetherGas.RegisterGases", AetherGas.RegisterGas)

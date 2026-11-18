@@ -40,7 +40,7 @@ function ENT:Use(activator)
         activator:SetNW2Float("AetherFilter", self:GetFilter())
         self:SetFilter(mine)
         activator:EmitSound("items/ammopickup.wav", 60, 90)
-        activator:ChatPrint("[Aether] Swapped in the fresher filter from this mask.")
+        AetherGas.Notify(activator, 0, "hint.filter_swapped")
         if mine <= 1 then self:Remove() end
     end
     if not AetherGas.HasMask(activator) then AetherGas.ToggleMask(activator) end

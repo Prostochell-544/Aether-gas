@@ -52,7 +52,6 @@ end, { passDamage = true })
 -- GMod Bombs 5 (сверено с кодом: gas_mask.lua / hazmat_suit.lua ставят эти поля на сервере).
 -- Флаг, который выставляет наша же маска (связь в обратную сторону), не считаем чужой маской.
 AetherGas.RegisterMaskProvider("gbombs5", function(ply)
-    if ply.AetherSetGBSuit then return 0 end           -- hazsuited поставил наш костюм, а не GBombs
     if ply.AetherSetGBMask then return ply.hazsuited == true end
     -- маска Rebirth тоже ставит gasmasked (совместимость с GBombs) — её считает поставщик «rebirth»
     if ply:GetNWBool("GasMaskIsOn", false) then return ply.hazsuited == true end
@@ -65,6 +64,22 @@ AetherGas.RegisterMaskProvider("jmod", function(ply)
     if not (JMod and JMod.GetArmorBiologicalResistance) then return 0 end
     local inhale = JMod.GetArmorBiologicalResistance(ply, DMG_NERVEGAS)
     return tonumber(inhale) or 0
+end)
+
+-- Z-City (режим; сверено: homigrad/organism/tier_1/sv_input.lua — урон DMG_NERVEGAS обнуляется, если на лице
+-- противогаз ply.armors.face == "mask2" или игрок — Combine). Остальной урон газов Z-City берёт своим
+-- «организмом» (hg.organism.GasDamage) — Aether наносит его штатным DMG_*.
+AetherGas.RegisterMaskProvider("zcity", function(ply)
+    local a = ply.armors
+    if istable(a) and a.face == "mask2" then return 1 end
+    if ply.PlayerClassName == "Combine" then return 1 end
+    return 0
+end)
+
+-- GChem — Chemical Warfare (сверено: gc_functions.lua — ply.GChem.IsMasked / IsSuited)
+AetherGas.RegisterMaskProvider("gchem", function(ply)
+    local g = ply.GChem
+    return (istable(g) and (g.IsMasked or g.IsSuited)) and 1 or 0
 end)
 
 AetherGas.RegisterMaskProvider("hook", function(ply)
@@ -94,6 +109,7 @@ end
 -- сторонние аддоны — хук AetherGas.HasGasSuit(ply) → true.
 function AetherGas.HasGasSuit(ply)
     if ply:GetNW2Bool("AetherSuit", false) or ply.hazsuited == true then return true end
+    if istable(ply.GChem) and ply.GChem.IsSuited then return true end
     if JMod and JMod.GetArmorBiologicalResistance then
         local ok, _, skin = pcall(JMod.GetArmorBiologicalResistance, ply, DMG_NERVEGAS)
         if ok and (tonumber(skin) or 0) >= 0.9 then return true end
@@ -108,7 +124,7 @@ timer.Create("AetherGas.Compat.GBombsSync", 0.5, 0, function()
         -- Чужую маску надели поверх нашей → нашу снимаем в карман (двух масок одновременно не бывает).
         if AetherGas.HasMask(ply) and AetherGas.ExternalMask(ply) >= 0.5 then
             ply:SetNW2Bool("AetherMask", false)
-            ply:ChatPrint("[Aether] Your Aether gas mask went to your pocket: another mod's mask is on.")
+            AetherGas.Notify(ply, 0, "hint.mask_to_pocket")
         end
     end
     if not scripted_ents.Get("gas_mask") then return end
@@ -191,6 +207,10 @@ concommand.Add("aether_compat_report", function(ply)
     out("  vFire (fire):                " .. yes(scripted_ents.Get("vfire") ~= nil))
     out("  JMod (EZ mask):              " .. yes(JMod ~= nil))
     out("  Rebirth gas mask:            " .. yes(weapons.GetStored("weapon_bo1_gasmask") ~= nil))
+    out("  GChem (mask/suit):           " .. yes(scripted_ents.GetStored("ent_gchem_mask_chemical") ~= nil))
+    out("  Z-City (gamemode):           " .. yes(engine.ActiveGamemode() == "zcity"))
+    out("  GSmoke (exhaled smoke):      " .. yes(GNarcotics ~= nil))
+    out("  Wiremod (device I/O):        " .. yes(WireLib ~= nil))
     out("  GMod Bombs 5 (mask/suit):    " .. yes(scripted_ents.Get("gas_mask") ~= nil or scripted_ents.Get("hazmat_suit") ~= nil))
     out("  VJ Base (NPC blinding):      " .. yes(VJBASE_VERSION ~= nil or VJ ~= nil))
     out("  DrGBase (NextBot blinding):  " .. yes(DrGBase ~= nil))
@@ -206,3 +226,41 @@ concommand.Add("aether_compat_report", function(ply)
         out(string.format("  %s: Aether mask %s, other mod protection %d%% (%s)", p:Nick(), yes(AetherGas.HasMask(p)), prot * 100, who or "no"))
     end
 end, nil, "Aether: detected mods and which mask each player wears")
+
+---------------------------------------------------------------------------------------------------
+-- GSmoke (сверено: sv_gnarcotics_core.lua — GNarcotics.BroadcastSmokePuff(ply, density, skipFirstPerson)
+-- рассылает частицы выдоха; оружие weapon_gnarc_* с NetworkVar IsLit). Выдох сигареты/вейпа добавляет
+-- в сетку облачко «tobacco_smoke» — дым из вентилятора уносит, в комнате он копится. Тлеющая сигарета,
+-- сигара, косяк или трубка (не вейп) — открытый огонь: поджигает горючий газ у лица.
+---------------------------------------------------------------------------------------------------
+local function HookGSmoke()
+    local G = GNarcotics
+    if not (G and G.BroadcastSmokePuff) or G.AetherWrapped then return end
+    local original = G.BroadcastSmokePuff
+    G.AetherWrapped = true
+    G.BroadcastSmokePuff = function(ply, density, skipFirstPerson)
+        original(ply, density, skipFirstPerson)
+        if not IsValid(ply) or not AetherGas.CVar.Enabled:GetBool() then return end
+        local aim = ply:GetAimVector()
+        local amount = math.Clamp((tonumber(density) or 1) * 0.6, 0.1, 2)
+        AetherGas.Solver.PuffAt("tobacco_smoke", ply:EyePos() + aim * 12 - Vector(0, 0, 3), amount, nil, aim * 70, 0)
+    end
+end
+hook.Add("InitPostEntity", "AetherGas.Compat.GSmoke", HookGSmoke)
+HookGSmoke()   -- lua refresh
+
+local FLAME_WEAPONS = { weapon_gnarc_cigarette = true, weapon_gnarc_cigar = true, weapon_gnarc_joint = true,
+    weapon_gnarc_pipe = true, weapon_gnarc_cigarette_nohud = true, weapon_gnarc_cigar_nohud = true,
+    weapon_gnarc_joint_nohud = true, weapon_gnarc_pipe_nohud = true }
+timer.Create("AetherGas.Compat.GSmokeFlame", 0.5, 0, function()
+    if not GNarcotics or Spatial.Pool.used == 0 then return end
+    if CurTime() - (Solver.FlammableSeen or -100) > 2 then return end
+    for _, ply in ipairs(player.GetAll()) do
+        local w = ply:GetActiveWeapon()
+        if IsValid(w) and FLAME_WEAPONS[w:GetClass()] and w.GetIsLit and w:GetIsLit() then
+            local e = ply:EyePos()
+            local key = Solver.FlammableAt(e.x, e.y, e.z)
+            if key then Solver.BroadcastIgnite(key) end
+        end
+    end
+end)
