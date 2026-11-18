@@ -20,7 +20,7 @@ Smoke fills rooms and pours through opened doors and broken windows. Chlorine cr
 - Players and NPCs/NextBots can't see through dense smoke.
 - Sound is muffled inside clouds.
 - Gas mask with a limited filter and spare filters.
-- Sarin and mustard gas also act through skin; only a hazmat suit stops them fully.
+- Sarin and mustard gas also act through skin; only a hazmat suit stops them fully. Aether has its own hazmat suit; GMod Bombs 5 and JMod suits work too.
 
 ### Items and tools
 
@@ -34,7 +34,7 @@ Smoke fills rooms and pours through opened doors and broken windows. Chlorine cr
 
 ### Compatibility
 
-- Gas masks and suits from GMod Bombs 5 and JMod.
+- Gas masks and suits from GMod Bombs 5, JMod and "Rebirth" Gas Mask (& Base) by Hidden — its filter is spent by Aether gases.
 - Fire from vFire, Fire Tool and burning props: fires make smoke, flammable gas explodes into vFire flames, CO₂ and nitrogen put fires out.
 - StormFox 2 wind; WAC and LVS helicopter rotor wash; fire extinguishers.
 - Procedural Wall Destruction; DrGBase and VJ Base NPCs.
@@ -57,7 +57,8 @@ The addon is server-side and client-side Lua plus materials and models. Every cl
 | Gas Sprayer | Weapons → `Gas Sprayer` | LMB spray, RMB settings and custom gas editor, R removes gas at aim |
 | Gas analyzer | Weapons → `Gas Analyzer` | LMB switches the probe between breathing zone and aim point. RMB cycles device screen / HUD |
 | Spare filter | Entities → `Gas Mask Filter` | E: if the mask filter is below half, it is replaced right away; otherwise the filter is kept as a spare (up to 3). A spare is screwed in automatically when the current filter runs out |
-| Gas mask | Entities → `Gas Mask` | E picks it up. E+R or `!mask` puts it on / takes it off. `aether_mask_drop` drops it |
+| Gas mask | Entities → `Gas Mask` | E puts it on. `!mask` (or hold E and press R) takes it off / puts it back on. `aether_mask_drop` drops it |
+| Hazmat suit | Entities → `Hazmat Suit` | E puts it on: full protection from every gas, half from steam burns, 10 % slower. `!suit` takes it off |
 | Duct / hose | Tool gun → Aether Gas → `Gas Duct / Hose` | LMB on a cylinder, then LMB where the nozzle goes. Or LMB on a wall for the intake vent, then LMB for the exhaust vent. E on a vent starts pumping |
 | Emitter | Tool gun → `Gas Emitter` | LMB places an emitter, RMB releases one puff |
 | Fans | Entities → `Blower Fan`, `Exhaust Fan (Admin)` | E turns it on. The blower pushes gas out of its grille; the exhaust fan removes gas |

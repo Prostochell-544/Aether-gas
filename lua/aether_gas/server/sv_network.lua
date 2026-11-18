@@ -49,12 +49,32 @@ function AetherGas.OwnsMask(ply)
     return ply:GetNW2Bool("AetherMaskOwned", false)
 end
 
+-- Понятное имя чужой маски для сообщений игроку
+local MASK_NAMES = { gbombs5 = "GMod Bombs", jmod = "JMod", rebirth = "Rebirth", hook = "another mod's" }
+local function ExternalName(ply)
+    if not AetherGas.ExternalMask then return nil end
+    local v, name = AetherGas.ExternalMask(ply)
+    if v < 0.5 then return nil end
+    return MASK_NAMES[name] or name or "another mod's"
+end
+
+--- Подсказка в центре экрана (первые разы) + строка в чат.
+local function Hint(ply, text)
+    ply:PrintMessage(HUD_PRINTCENTER, text)
+    ply:ChatPrint("[Aether] " .. text)
+end
+
 function AetherGas.GiveMask(ply, filter)
     if not IsValid(ply) or not ply:IsPlayer() or AetherGas.OwnsMask(ply) then return false end
-    local external = AetherGas.ExternalMask and AetherGas.ExternalMask(ply) >= 0.5
+    local external = ExternalName(ply)
     ply:SetNW2Bool("AetherMaskOwned", true)
-    ply:SetNW2Bool("AetherMask", not external)   -- поверх чужой маски не надевается — кладётся в карман
-    if external then ply:ChatPrint("[Aether] Gas mask put in your pocket: you already wear another mod's mask.") end
+    ply:SetNW2Bool("AetherMask", external == nil)   -- поверх чужой маски не надевается — кладётся в карман
+    if external then
+        Hint(ply, "Gas mask put in your pocket: take off your " .. external .. " mask, then type !mask")
+    elseif not ply.AetherMaskHinted then
+        ply.AetherMaskHinted = true
+        Hint(ply, "Gas mask ON. Take off / put on: type !mask (or hold E and press R)")
+    end
     ply:SetNW2Float("AetherFilter", filter or CV.MaskFilter:GetFloat())
     ply:EmitSound("items/ammopickup.wav", 60)
     return true
@@ -65,9 +85,12 @@ function AetherGas.ToggleMask(ply)
     if (ply.AetherMaskNext or 0) > CurTime() then return end
     ply.AetherMaskNext = CurTime() + 0.8
     local wear = not AetherGas.HasMask(ply)
-    if wear and AetherGas.ExternalMask and AetherGas.ExternalMask(ply) >= 0.5 then
-        ply:ChatPrint("[Aether] You already wear another mod's gas mask. Take it off first.")
-        return
+    if wear then
+        local external = ExternalName(ply)
+        if external then
+            Hint(ply, "You already wear a " .. external .. " gas mask. Take it off first.")
+            return
+        end
     end
     ply:SetNW2Bool("AetherMask", wear)
     ply:EmitSound(wear and "items/ammopickup.wav" or "physics/cardboard/cardboard_box_impact_soft2.wav", 60)
@@ -143,7 +166,50 @@ hook.Add("PlayerSay", "AetherGas.Network.MaskChat", function(ply, text)
     end
 end)
 
+---------------------------------------------------------------------------------------------------
+-- Костюм химзащиты (aether_hazmat): NW2 «AetherSuit». Защищает дыхание и кожу целиком, от пара наполовину.
+---------------------------------------------------------------------------------------------------
+function AetherGas.HasSuit(ply) return ply:GetNW2Bool("AetherSuit", false) end
+
+function AetherGas.WearSuit(ply)
+    if not IsValid(ply) or not ply:IsPlayer() or not ply:Alive() then return false end
+    if AetherGas.HasSuit(ply) then
+        ply:ChatPrint("[Aether] You already wear a hazmat suit.")
+        return false
+    end
+    ply:SetNW2Bool("AetherSuit", true)
+    if ply.hazsuited ~= true then ply.hazsuited, ply.AetherSetGBSuit = true, true end   -- газы GBombs тоже не действуют
+    ply:EmitSound("npc/combine_soldier/gear" .. math.random(1, 6) .. ".wav", 70)
+    Hint(ply, "Hazmat suit ON: full protection. Take it off: type !suit")
+    return true
+end
+
+function AetherGas.RemoveSuit(ply, drop)
+    if not IsValid(ply) or not AetherGas.HasSuit(ply) then return end
+    ply:SetNW2Bool("AetherSuit", false)
+    if ply.AetherSetGBSuit then ply.hazsuited, ply.AetherSetGBSuit = false, nil end
+    if drop then
+        local e = ents.Create("aether_hazmat")
+        if IsValid(e) then
+            e:SetPos(ply:Alive() and (ply:GetPos() + ply:GetForward() * 30 + Vector(0, 0, 10)) or ply:WorldSpaceCenter())
+            e:Spawn()
+        end
+    end
+end
+
+concommand.Add("aether_suit_drop", function(ply) if IsValid(ply) then AetherGas.RemoveSuit(ply, true) end end,
+    nil, "Aether: take off the hazmat suit (it drops on the ground)")
+
+hook.Add("PlayerSay", "AetherGas.Network.SuitChat", function(ply, text)
+    local t = string.lower(string.Trim(text))
+    if t == "!suit" or t == "/suit" then
+        AetherGas.RemoveSuit(ply, true)
+        return ""
+    end
+end)
+
 hook.Add("PlayerDeath", "AetherGas.Network.Mask", function(ply)
+    AetherGas.RemoveSuit(ply, true)
     AetherGas.RemoveMask(ply, true)
     -- запасные фильтры выпадают рядом с телом
     for i = 1, ply:GetNW2Int("AetherSpareFilters", 0) do
@@ -189,12 +255,34 @@ end
 
 local COUGH_SOUNDS ={ "ambient/voices/cough1.wav", "ambient/voices/cough2.wav", "ambient/voices/cough3.wav", "ambient/voices/cough4.wav" }
 
-local function ApplyExposure(ent, isPlayer, scale)
+-- Замер по телу: глаза (дыхание целиком), пояс и ноги. Облако рисуется крупнее своих ячеек, и стоящий
+-- «по грудь» в хлоре видит газ на экране — значит, дышит им: пояс даёт 70 % вдоха, ноги 30 %.
+-- Замедление — по самому плотному из трёх замеров (идти по газу вброд тяжело на любой высоте).
+local BODY_INHALE = 0.7
+local FEET_INHALE = 0.3
+
+local function SampleBody(ent)
     local eye = ent:EyePos()
-    local g, c = Solver.Sample(eye.x, eye.y, eye.z)
+    local ge, ce = Solver.Sample(eye.x, eye.y, eye.z)
+    local mid = ent:WorldSpaceCenter()
+    local gm, cm = Solver.Sample(mid.x, mid.y, mid.z)
+    local feet = ent:GetPos()
+    local gf, cf = Solver.Sample(feet.x, feet.y, feet.z + 10)
+    local g, c = ge, ce
+    if gm ~= 0 and cm * BODY_INHALE > c then g, c = gm, cm * BODY_INHALE end
+    if gf ~= 0 and cf * FEET_INHALE > c then g, c = gf, cf * FEET_INHALE end
+    local slowG, slowC = ge, ce
+    if cm > slowC then slowG, slowC = gm, cm end
+    if cf > slowC then slowG, slowC = gf, cf end
+    return g, c, eye, slowG, slowC
+end
+AetherGas.SampleBody = SampleBody
+
+local function ApplyExposure(ent, isPlayer, scale)
+    local g, c, eye, slowG, slowC = SampleBody(ent)
 
     if isPlayer then
-        local slow = g ~= 0 and P.Slowdown[g] * c or 0
+        local slow = slowG ~= 0 and P.Slowdown[slowG] * slowC or 0
         if math.abs(slow - ent:GetNW2Float("AetherSlow", 0)) > 0.02 then ent:SetNW2Float("AetherSlow", slow) end
     end
     if g == 0 or c < P.DamageThreshold[g] then return end
@@ -202,6 +290,11 @@ local function ApplyExposure(ent, isPlayer, scale)
     local def = AetherGas.GasById[g]
     -- Хук для других модов: false — пропустить воздействие (свой иммунитет, режим, класс игрока…)
     if hook.Run("AetherGas.PreExposure", ent, def.name, c) == false then return end
+    -- Костюм химзащиты с дыхательным аппаратом: газы не действуют, пар обжигает вполовину
+    if isPlayer and ent:GetNW2Bool("AetherSuit", false) then
+        if def.damageType ~= DMG_BURN then return end
+        scale = scale * 0.5
+    end
     -- Защита дыхания 0..1: своя маска (тратит фильтр) или маска другого мода (sv_compat.lua).
     -- Урон × (1 − защита·(1 − skinDamage)): кожное действие (зарин, иприт) снимает только костюм.
     local prot, masked = 0, false
@@ -214,8 +307,14 @@ local function ApplyExposure(ent, isPlayer, scale)
             if filter == 0 and not SwapSpareFilter(ent) then ent:EmitSound("buttons/button10.wav", 60) end
         end
     end
-    local ext = 0
-    if isPlayer and def.maskProtects and not masked and AetherGas.ExternalMask then ext = AetherGas.ExternalMask(ent) end
+    local ext, extOpts = 0, nil
+    if isPlayer and def.maskProtects and not masked and AetherGas.ExternalMask then
+        local _
+        ext, _, extOpts = AetherGas.ExternalMask(ent, def)
+    end
+    -- Маска мода, которая сама поглощает урон своего типа и тратит фильтр (Rebirth): урон наносим целиком,
+    -- её хук EntityTakeDamage его заблокирует; эффекты и кашель Aether всё равно гасятся по ext.
+    local passDamage = extOpts and extOpts.passDamage and ext > 0
     if isPlayer and math.abs(ent:GetNW2Float("AetherExtMask", 0) - ext) > 0.01 then
         ent:SetNW2Float("AetherExtMask", ext)   -- клиенту: приглушить эффекты
     end
@@ -223,7 +322,7 @@ local function ApplyExposure(ent, isPlayer, scale)
     local suit = isPlayer and AetherGas.HasGasSuit and AetherGas.HasGasSuit(ent)
     if suit and def.maskProtects then return end
     local leak = 1 - prot * (1 - def.skinDamage)
-    if leak <= 0.001 then return end
+    if leak <= 0.001 and not passDamage then return end
 
     -- Судороги (зарин): толчки камеры, сильнее с концентрацией; противогаз их не снимает (кожа)
     local scr = def.screen
@@ -231,7 +330,7 @@ local function ApplyExposure(ent, isPlayer, scale)
         ent:ViewPunch(Angle(random(-6, 6), random(-6, 6), random(-4, 4)))
     end
 
-    local dmg = P.Damage[g] * c * PERIOD * scale * leak
+    local dmg = P.Damage[g] * c * PERIOD * scale * (passDamage and 1 or leak)
     if dmg > 0 then
         local acc = (DamageAcc[ent] or 0) + dmg
         if acc >= 1 then

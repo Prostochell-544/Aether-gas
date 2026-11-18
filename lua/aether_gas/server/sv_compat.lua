@@ -25,18 +25,37 @@ local Spatial   = AetherGas.Spatial
 AetherGas.MaskProviders = AetherGas.MaskProviders or {}
 local Providers = AetherGas.MaskProviders
 
---- Регистрирует поставщика защиты дыхания. fn(ply) → доля защиты 0..1 (true = 1, false/nil = 0).
-function AetherGas.RegisterMaskProvider(name, fn)
+--- Регистрирует поставщика защиты дыхания. fn(ply, gasDef) → доля защиты 0..1 (true = 1, false/nil = 0).
+-- opts.passDamage = true: урон газа всё равно наносится (тип DMG_* из реестра), чтобы маска мода сама
+-- перехватила его в EntityTakeDamage и потратила свой фильтр; Aether при этом не кашляет и гасит эффекты.
+function AetherGas.RegisterMaskProvider(name, fn, opts)
     for i = 1, #Providers do
-        if Providers[i].name == name then Providers[i].fn = fn return end
+        if Providers[i].name == name then Providers[i].fn, Providers[i].opts = fn, opts return end
     end
-    Providers[#Providers + 1] = { name = name, fn = fn }
+    Providers[#Providers + 1] = { name = name, fn = fn, opts = opts }
 end
+
+-- Working "Rebirth" Gas Mask (& Base) by Hidden (Workshop 3337361530; сверено с кодом
+-- sv_gasmaskeffects.lua / weapon_bo1_gasmask.lua). Надетая маска: NW «GasMaskIsOn», типы урона
+-- NW «GasMaskDamageTypes», ply.gasmasked — фильтр не пуст, прочность NW «GasMaskHealth» при
+-- NW «GasMaskCanBreak». Мод сам блокирует такой урон в EntityTakeDamage и тратит фильтр на его величину —
+-- поэтому passDamage: Aether наносит урон своего типа, а маска Rebirth его поглощает.
+AetherGas.RegisterMaskProvider("rebirth", function(ply, def)
+    if not ply:GetNW2Bool("GasMaskIsOn", false) and not ply:GetNWBool("GasMaskIsOn", false) then return 0 end
+    if ply.gasmasked ~= true then return 0 end                         -- фильтр кончился
+    if ply:GetNWBool("GasMaskCanBreak", false) and ply:GetNWInt("GasMaskHealth", 0) <= 0 then return 0 end
+    local types = ply:GetNWInt("GasMaskDamageTypes", 0)
+    if def and bit.band(def.damageType, bit.bnot(types)) ~= 0 then return 0 end   -- тип урона газа не фильтруется
+    return 1
+end, { passDamage = true })
 
 -- GMod Bombs 5 (сверено с кодом: gas_mask.lua / hazmat_suit.lua ставят эти поля на сервере).
 -- Флаг, который выставляет наша же маска (связь в обратную сторону), не считаем чужой маской.
 AetherGas.RegisterMaskProvider("gbombs5", function(ply)
+    if ply.AetherSetGBSuit then return 0 end           -- hazsuited поставил наш костюм, а не GBombs
     if ply.AetherSetGBMask then return ply.hazsuited == true end
+    -- маска Rebirth тоже ставит gasmasked (совместимость с GBombs) — её считает поставщик «rebirth»
+    if ply:GetNWBool("GasMaskIsOn", false) then return ply.hazsuited == true end
     return ply.gasmasked == true or ply.hazsuited == true
 end)
 
@@ -54,18 +73,19 @@ AetherGas.RegisterMaskProvider("hook", function(ply)
     return tonumber(r) or 0
 end)
 
---- Защита дыхания от противогазов других модов: доля 0..1 и имя лучшего поставщика.
-function AetherGas.ExternalMask(ply)
-    local best, bestName = 0, nil
+--- Защита дыхания от противогазов других модов: доля 0..1, имя лучшего поставщика и его opts.
+-- def — описание газа (может быть nil: «есть ли вообще чужая маска»).
+function AetherGas.ExternalMask(ply, def)
+    local best, bestName, bestOpts = 0, nil, nil
     for i = 1, #Providers do
         local p = Providers[i]
-        local ok, res = pcall(p.fn, ply)   -- чужой код: ошибка поставщика не должна ломать урон
+        local ok, res = pcall(p.fn, ply, def)   -- чужой код: ошибка поставщика не должна ломать урон
         if ok then
             local v = res == true and 1 or tonumber(res) or 0
-            if v > best then best, bestName = math.min(1, v), p.name end
+            if v > best then best, bestName, bestOpts = math.min(1, v), p.name, p.opts end
         end
     end
-    return best, bestName
+    return best, bestName, bestOpts
 end
 
 --- Костюм химзащиты (кожа закрыта): снимает и кожное действие зарина/иприта.
@@ -73,7 +93,7 @@ end
 -- сверено: sv_init.lua «VictimFaceProtection, VictimSkinProtection = …») ≥ 90 %;
 -- сторонние аддоны — хук AetherGas.HasGasSuit(ply) → true.
 function AetherGas.HasGasSuit(ply)
-    if ply.hazsuited == true then return true end
+    if ply:GetNW2Bool("AetherSuit", false) or ply.hazsuited == true then return true end
     if JMod and JMod.GetArmorBiologicalResistance then
         local ok, _, skin = pcall(JMod.GetArmorBiologicalResistance, ply, DMG_NERVEGAS)
         if ok and (tonumber(skin) or 0) >= 0.9 then return true end
@@ -170,6 +190,7 @@ concommand.Add("aether_compat_report", function(ply)
     out("  StormFox 2 (wind):           " .. yes(StormFox2 ~= nil))
     out("  vFire (fire):                " .. yes(scripted_ents.Get("vfire") ~= nil))
     out("  JMod (EZ mask):              " .. yes(JMod ~= nil))
+    out("  Rebirth gas mask:            " .. yes(weapons.GetStored("weapon_bo1_gasmask") ~= nil))
     out("  GMod Bombs 5 (mask/suit):    " .. yes(scripted_ents.Get("gas_mask") ~= nil or scripted_ents.Get("hazmat_suit") ~= nil))
     out("  VJ Base (NPC blinding):      " .. yes(VJBASE_VERSION ~= nil or VJ ~= nil))
     out("  DrGBase (NextBot blinding):  " .. yes(DrGBase ~= nil))

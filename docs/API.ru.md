@@ -91,7 +91,7 @@ end)
 | `API.Ignite(pos)` | поджечь газ в точке; если смесь в пределах воспламенения, начнётся цепная детонация |
 | `API.Clear()` | удалить весь газ и все источники |
 | `API.GiveMask(ply, filterSeconds)`, `API.RemoveMask(ply, drop)` | противогаз Aether |
-| `API.RegisterMaskProvider(name, fn)` | `fn(ply)` возвращает защиту дыхания 0..1 (или `true`); урон Aether умножается на (1 − защита) |
+| `API.RegisterMaskProvider(name, fn, opts)` | `fn(ply, gasDef)` возвращает защиту дыхания 0..1 (или `true`); урон Aether умножается на (1 − защита) . `opts.passDamage = true`: Aether всё равно наносит урон газа, чтобы ваша маска поглотила его в `EntityTakeDamage` и потратила свой фильтр |
 | `API.SetCustomGas(slot, flat)` | задать параметры `"custom_1"`…`"custom_4"`; `flat` — поля из `AetherGas.CustomGasFields` |
 
 Всё, что вы делаете на сервере, доходит до клиентов маленькими событиями. Сами сетки газа по сети не отправляйте.

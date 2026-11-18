@@ -91,7 +91,7 @@ Models have skins only for Aether's own gases. A third-party gas uses the neutra
 | `API.Ignite(pos)` | ignites gas at a point, which starts a chain detonation if the mixture is within its limits |
 | `API.Clear()` | removes all gas and sources |
 | `API.GiveMask(ply, filterSeconds)`, `API.RemoveMask(ply, drop)` | Aether gas mask |
-| `API.RegisterMaskProvider(name, fn)` | `fn(ply)` returns respiratory protection 0..1 (or `true`); Aether damage is multiplied by (1 − protection) |
+| `API.RegisterMaskProvider(name, fn, opts)` | `fn(ply, gasDef)` returns respiratory protection 0..1 (or `true`); Aether damage is multiplied by (1 − protection) . `opts.passDamage = true`: Aether still deals the gas damage so your mask can absorb it in `EntityTakeDamage` and spend its own filter |
 | `API.SetCustomGas(slot, flat)` | sets the parameters of `"custom_1"`…`"custom_4"`; `flat` uses the fields of `AetherGas.CustomGasFields` |
 
 Everything you do on the server reaches clients as small events; never send gas grids yourself.

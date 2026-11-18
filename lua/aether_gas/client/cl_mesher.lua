@@ -261,6 +261,21 @@ local function Build(slot, fx, fy, fz, rx, ry, rz, ux, uy, uz, ex, ey, ez)
                         if k < MIN_SCALE then k = MIN_SCALE end
                         Rx, Ry, Rz, Ux, Uy, Uz = Rx * k, Ry * k, Rz * k, Ux * k, Uy * k, Uz * k
                     end
+                    -- Верхний слой облака (над ячейкой пусто): видимая часть клуба не выше ячейки + четверть
+                    -- вокселя — облако на экране совпадает с газом в сетке (замер урона по телу — sv_network).
+                    local above
+                    if lz < 7 then above = Conc[idx + 64] else
+                        local ai = Solver.KeyIndex(key + 1048576, false)
+                        above = ai and Conc[ai] or 0
+                    end
+                    if above <= DRAW_MIN then
+                        local ez = (abs(Rz) + abs(Uz)) * VIS_CORE
+                        local top = cz0 + s * 1.25
+                        if z + ez > top then
+                            z = top - ez
+                            if z < cz0 + s * 0.2 then z = cz0 + s * 0.2 end
+                        end
+                    end
 
                     -- ячейка атласа 2×2 по ключу (другой множитель, чем у поворота — нет корреляции)
                     local q = (key * 7) % 4

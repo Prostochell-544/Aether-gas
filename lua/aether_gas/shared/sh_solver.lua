@@ -1041,6 +1041,7 @@ end
 -- Замедление в газе: сервер выставляет NW2-float, обе стороны применяют в SetupMove (без рывков предсказания).
 hook.Add("SetupMove", "AetherGas.Solver.Slow", function(ply, mv)
     local s = ply:GetNW2Float("AetherSlow", 0)
+    if ply:GetNW2Bool("AetherSuit", false) then s = 1 - (1 - s) * 0.9 end   -- костюм химзащиты: −10 %
     if s > 0.001 then
         local f = 1 - s
         mv:SetMaxClientSpeed(mv:GetMaxClientSpeed() * f)
@@ -1317,7 +1318,28 @@ hook.Add("AetherGas.ClientReady", "AetherGas.Solver", function(ply)
     end
 end)
 
--- Пули: туннель видимости. Только чтение data; ничего не возвращаем.
+-- Пули: туннель видимости в дыму. Только чтение data; ничего не возвращаем.
+-- Поджиг горючего газа пулей — только там, где есть искра или пламя:
+--   • дульное пламя: точка выстрела (data.Src) внутри горючей смеси;
+--   • искра попадания: пуля бьёт в металл/решётку/технику (всегда) или бетон/плитку (с шансом) внутри смеси;
+--   • энергетический заряд (трассер AR2) — искра при любом попадании.
+-- Пролёт пули сквозь облако сам по себе газ не поджигает (раньше поджигалась вся траектория).
+local SPARK_ALWAYS = { [MAT_METAL] = true, [MAT_GRATE] = true, [MAT_VENT] = true, [MAT_COMPUTER] = true }
+local SPARK_SOMETIMES = { [MAT_CONCRETE] = 0.35, [MAT_TILE] = 0.35, [MAT_GLASS] = 0.2 }
+local NO_SPARK = { [MAT_FLESH] = true, [MAT_ALIENFLESH] = true, [MAT_BLOODYFLESH] = true }
+
+--- Ключ ячейки с горючей смесью в пределах воспламенения в точке (x, y, z) или nil.
+local function FlammableAt(x, y, z)
+    local key = Spatial.WorldToVoxel(x, y, z)
+    if not key then return nil end
+    local idx = KeyIndex(key, false)
+    if not idx then return nil end
+    local g, c = Gas[idx], Conc[idx]
+    if g ~= 0 and c >= PflameMin[g] and c <= PflameMax[g] then return key end
+    return nil
+end
+Solver.FlammableAt = FlammableAt
+
 local tunnelsThisTick, tunnelTick = 0, 0
 hook.Add("PostEntityFireBullets", "AetherGas.Solver.Bullets", function(_, data)
     if Pool.used == 0 then return end
@@ -1329,15 +1351,29 @@ hook.Add("PostEntityFireBullets", "AetherGas.Solver.Bullets", function(_, data)
     tunnelsThisTick = tunnelsThisTick + 1
 
     local a, b = tr.StartPos, tr.HitPos
-    local igniteKey = Tunnel(a.x, a.y, a.z, b.x, b.y, b.z, true)
+    Tunnel(a.x, a.y, a.z, b.x, b.y, b.z, false)
     net.Start(C.NET_SOLVER)
     net.WriteUInt(1, 8)
     net.WriteUInt(EV_TUNNEL, 3)
     net.WriteVector(a)
     net.WriteVector(b)
     net.Broadcast()
-    -- Пуля, прошедшая через горючую смесь, — искра. Клиентам уходит точка поджига.
-    if igniteKey then BroadcastIgnite(igniteKey) end
+
+    if Solver.FlammableSeen and CurTime() - Solver.FlammableSeen > 2 then return end   -- горючего нигде нет
+    -- дульное пламя
+    local src = data.Src or a
+    local key = FlammableAt(src.x, src.y, src.z)
+    -- искра в точке попадания (чуть перед поверхностью — в ячейке с газом, а не в стене)
+    if not key and tr.Hit and not tr.HitSky then
+        local mat = tr.MatType
+        local energy = data.TracerName == "AR2Tracer"
+        local chance = (energy or SPARK_ALWAYS[mat]) and 1 or (SPARK_SOMETIMES[mat] or 0)
+        if not NO_SPARK[mat] and chance > 0 and math.random() < chance then
+            local n = tr.HitNormal
+            key = FlammableAt(b.x + n.x * 4, b.y + n.y * 4, b.z + n.z * 4)
+        end
+    end
+    if key then BroadcastIgnite(key) end
 end)
 
 -- Взрывы: GMod не даёт хука «взрыв», ловим урон DMG_BLAST и склеиваем одну детонацию по месту/времени.

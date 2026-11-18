@@ -27,7 +27,21 @@ function ENT:Initialize()
     if self:GetFilter() <= 0 then self:SetFilter(AetherGas.CVar.MaskFilter:GetFloat()) end
 end
 
+-- «E»: нет маски — подобрать и надеть; маска уже есть — забрать фильтр посвежее (старый остаётся в лежащей
+-- маске) и надеть свою.
 function ENT:Use(activator)
-    if not IsValid(activator) or not activator:IsPlayer() or AetherGas.OwnsMask(activator) then return end
-    if AetherGas.GiveMask(activator, self:GetFilter()) then self:Remove() end
+    if not IsValid(activator) or not activator:IsPlayer() then return end
+    if not AetherGas.OwnsMask(activator) then
+        if AetherGas.GiveMask(activator, self:GetFilter()) then self:Remove() end
+        return
+    end
+    local mine = activator:GetNW2Float("AetherFilter", 0)
+    if self:GetFilter() > mine + 1 then
+        activator:SetNW2Float("AetherFilter", self:GetFilter())
+        self:SetFilter(mine)
+        activator:EmitSound("items/ammopickup.wav", 60, 90)
+        activator:ChatPrint("[Aether] Swapped in the fresher filter from this mask.")
+        if mine <= 1 then self:Remove() end
+    end
+    if not AetherGas.HasMask(activator) then AetherGas.ToggleMask(activator) end
 end

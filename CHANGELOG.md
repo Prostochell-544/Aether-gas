@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.9.2 — fixes from Workshop feedback
+
+- Gas cylinders can be punctured: bullets, buckshot, crossbow bolts, blades and hard impacts open up to 3 leaks that jet gas out with thrust and drain the cylinder, whatever the valve state.
+- Flammable cylinders (hydrogen, methane, hydrogen sulfide…) explode from fire, explosions, shock/energy (AR2) and high-calibre bullets (over 25 damage, except crossbow). 9 mm and buckshot only puncture them. In a fire they explode after 2 s. Non-flammable cylinders burst from explosions and vent through the relief valve in a fire.
+- Bullets no longer ignite gas just by flying through a cloud. Gas ignites from muzzle flash (shooter inside the mixture), impact sparks on metal, grates and machinery (sometimes on concrete and tile, never on flesh), AR2 energy shots, explosions and fire.
+- Exposure is sampled at eyes, waist (70 % of a breath) and feet (30 %), so standing chest-deep in chlorine hurts. The top of a cloud is drawn level with the simulated cells.
+- Gas mask: E on a mask puts it on (or swaps in its fresher filter). Clear prompts name the other mod's mask that blocks it. `!mask` works as before.
+- New Hazmat Suit entity: full protection from every gas (half from steam burns), 10 % slower, `!suit` takes it off, drops on death.
+- Compatibility with "Rebirth" Gas Mask (& Base) by Hidden: the mask protects from Aether gases and its filter is spent.
+- API: `RegisterMaskProvider(name, fn, opts)` — `fn` gets the gas definition; `opts.passDamage` lets a mask absorb the damage itself.
+
 ## 0.9.1 — gas pressure and airflow
 
 Based on the first player feedback.

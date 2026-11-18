@@ -45,16 +45,24 @@ hook.Add("Think", "AetherGas.Effects.Update", function()
     if not IsValid(ply) then return end
     local dt = FrameTime()
     local alive = ply:Alive()
-    local masked = alive and ply:GetNW2Bool("AetherMask", false)
+    local suit = alive and ply:GetNW2Bool("AetherSuit", false)
+    local masked = alive and (ply:GetNW2Bool("AetherMask", false) or suit)
 
     local g, c = 0, 0
     if alive and cvEffects:GetBool() then
+        -- как на сервере (sv_network SampleBody): глаза целиком, пояс 70 %, ноги 30 %
         local e = ply:EyePos()
         g, c = Solver.Sample(e.x, e.y, e.z)
+        local m = ply:WorldSpaceCenter()
+        local gm, cm = Solver.Sample(m.x, m.y, m.z)
+        if gm ~= 0 and cm * 0.7 > c then g, c = gm, cm * 0.7 end
+        local f = ply:GetPos()
+        local gf, cf = Solver.Sample(f.x, f.y, f.z + 10)
+        if gf ~= 0 and cf * 0.3 > c then g, c = gf, cf * 0.3 end
     end
     local def = g ~= 0 and AetherGas.GasById[g]
     local scr = def and def.screen or nil
-    local protected = def and def.maskProtects and (masked or ply:GetNW2Float("AetherExtMask", 0) >= 0.5)
+    local protected = def and (suit or (def.maskProtects and (masked or ply:GetNW2Float("AetherExtMask", 0) >= 0.5)))
 
     local tDist = (scr and scr.distortion or 0) * c * (protected and 0.15 or 1)
     local tFog  = (scr and scr.fog or 0) * c * (masked and 1.4 or 1)
@@ -183,14 +191,21 @@ end)
 -- Шкала фильтра противогаза (маска при себе — шкала видна и снятой, с подсказкой клавиш)
 hook.Add("HUDPaint", "AetherGas.Effects.MaskHUD", function()
     local ply = LocalPlayer()
-    if not IsValid(ply) or not ply:GetNW2Bool("AetherMaskOwned", false) then return end
+    if not IsValid(ply) then return end
+    local suit = ply:GetNW2Bool("AetherSuit", false)
+    if suit then
+        if ply:Alive() and not ply:ShouldDrawLocalPlayer() then DrawMaskView(ScrW(), ScrH()) end
+        draw.SimpleText("HAZMAT SUIT ON   (!suit - take off)", "DermaDefault", ScrW() * 0.5 - 110, ScrH() - 88,
+            Color(236, 200, 40))
+    end
+    if not ply:GetNW2Bool("AetherMaskOwned", false) then return end
     local worn = ply:GetNW2Bool("AetherMask", false)
-    if worn and ply:Alive() and not ply:ShouldDrawLocalPlayer() then DrawMaskView(ScrW(), ScrH()) end
+    if worn and not suit and ply:Alive() and not ply:ShouldDrawLocalPlayer() then DrawMaskView(ScrW(), ScrH()) end
     local frac = math.Clamp(ply:GetNW2Float("AetherFilter", 0) / AetherGas.CVar.MaskFilter:GetFloat(), 0, 1)
     local w, h = 220, 10
     local x, y = ScrW() * 0.5 - w * 0.5, ScrH() - 60
     local spare = ply:GetNW2Int("AetherSpareFilters", 0)
-    draw.SimpleText((worn and "MASK ON  [E+R] take off" or "MASK OFF  [E+R] put on") ..
+    draw.SimpleText((worn and "MASK ON  (!mask or E+R - take off)" or "MASK OFF  (!mask or E+R - put on)") ..
         (spare > 0 and ("   spare filters: " .. spare) or ""), "DermaDefault", x, y - 14,
         worn and color_white or Color(255, 210, 120))
     surface.SetDrawColor(0, 0, 0, 160)

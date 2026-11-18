@@ -896,6 +896,29 @@ def tex_sprayer_tank():
     return img.filter(ImageFilter.GaussianBlur(1.2))
 
 
+def tex_hazmat():
+    """Свёрнутый костюм химзащиты: жёлтая прорезиненная ткань со складками, чёрные ремни, табличка CBRN."""
+    S = 512
+    img = Image.new("RGB", (S, S))
+    cloth = noise_img((S, 256), (222, 186, 38), 8, 151, 1.4)
+    d = ImageDraw.Draw(cloth)
+    rnd = random.Random(151)
+    for _ in range(26):   # складки
+        y = rnd.uniform(0, 256)
+        d.line([(0, y), (S, y + rnd.uniform(-20, 20))], fill=(196, 160, 30), width=rnd.randint(2, 5))
+    paste_region(img, cloth.filter(ImageFilter.GaussianBlur(1.0)), R_PAINT)
+    strap = noise_img((256, 256), (30, 30, 32), 5, 152, 0.6)
+    ds = ImageDraw.Draw(strap)
+    for x in range(0, 256, 6):
+        ds.line([(x, 0), (x, 256)], fill=(22, 22, 24))
+    paste_region(img, strap, R_DARK)
+    paste_region(img, metal((256, 128), (150, 152, 156), 153), R_HOUSING)
+    # табличка лежит на верхней грани (+Z): её развёртка зеркальна боковым — надпись отражаем
+    paste_region(img, label_plate("HAZMAT SUIT  CBRN", 2.2, (24, 24, 24), (236, 200, 40)).transpose(Image.FLIP_LEFT_RIGHT),
+                 R_PLATE)
+    return img
+
+
 def tex_emitter():
     S = 512
     img = Image.new("RGB", (S, S))
@@ -1221,6 +1244,26 @@ def model_flare():
     return m, phys, [("root", -1, (0, 0, 0))], 0.5, "plastic", [f"flare_{g}" for g in FLARE_ORDER]
 
 
+def model_hazmat():
+    """Свёрнутый костюм химзащиты (тюк на полу): два слоя ткани, ремни вокруг с пряжками, табличка сверху."""
+    mat = "hazmat"
+    parts = [
+        box(mat, R_PAINT, (-8, -5.5, 0), (8, 5.5, 3.2)),
+        box(mat, R_PAINT, (-7.6, -5.2, 3.2), (7.6, 5.2, 6)),          # второй слой (сложенный капюшон)
+        box(mat, R_PLATE, (-4.5, -1.6, 6.0), (2.5, 1.6, 6.08), fit=False),
+    ]
+    for x in (-5.6, 5.6):   # ремень: бока + верх, повторяет форму тюка
+        parts.append(box(mat, R_DARK, (x - 0.8, -5.75, -0.02), (x + 0.8, -5.5, 3.2)))
+        parts.append(box(mat, R_DARK, (x - 0.8, 5.5, -0.02), (x + 0.8, 5.75, 3.2)))
+        parts.append(box(mat, R_DARK, (x - 0.8, -5.45, 3.2), (x + 0.8, -5.2, 6.0)))
+        parts.append(box(mat, R_DARK, (x - 0.8, 5.2, 3.2), (x + 0.8, 5.45, 6.0)))
+        parts.append(box(mat, R_DARK, (x - 0.8, -5.45, 6.0), (x + 0.8, 5.45, 6.2)))
+        parts.append(box(mat, R_HOUSING, (x - 1.0, 5.75, 1.0), (x + 1.0, 5.95, 2.4)))   # пряжка
+    m = combine(*parts)
+    phys = box("phys", R_PAINT, (-8, -5.8, 0), (8, 5.8, 6.2))
+    return m, phys, [("root", -1, (0, 0, 0))], 6, "rubber", None
+
+
 def model_emitter():
     mat = "emitter"
     m = combine(
@@ -1245,6 +1288,7 @@ MODELS = {
     "gas_filter": (model_filter, lambda: {}),   # материал противогаза (собирается после gasmask)
     "gas_analyzer": (model_analyzer, lambda: {"analyzer": tex_analyzer()}),
     "gas_emitter": (model_emitter, lambda: {"emitter": tex_emitter()}),
+    "hazmat_suit": (model_hazmat, lambda: {"hazmat": tex_hazmat()}),
     "signal_flare": (model_flare, lambda: {f"flare_{g}": tex_flare(g) for g in FLARE_ORDER}),
     "gas_sprayer": (model_sprayer, lambda: {"sprayer": tex_sprayer(), "sprayer_tank": tex_sprayer_tank()}),
 }
@@ -1376,6 +1420,7 @@ ICONS = {  # класс → (модель, материал-подмена дл�
     "weapon_aether_analyzer": ("gas_analyzer", None, (90, 255, 120), 30, 12),
     "weapon_aether_gasgun": ("gas_sprayer", None, (110, 210, 255), 70, 12),
     "aether_filter": ("gas_filter", None, (120, 170, 120), 30, 22),
+    "aether_hazmat": ("hazmat_suit", None, (236, 200, 40), 30, 28),
     "weapon_aether_flare": ("signal_flare", "flare_signal_red", (214, 52, 44), 30, 20),
     "aether_cylinder_plain": ("gas_cylinder", "cylinder_plain", (150, 135, 110), 30, 12),
 }

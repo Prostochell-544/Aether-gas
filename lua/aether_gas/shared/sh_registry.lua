@@ -4,7 +4,7 @@
 AetherGas = AetherGas or {}
 local AetherGas = AetherGas
 
-AetherGas.Version = "0.9.1"
+AetherGas.Version = "0.9.2"
 
 -- Пространства имён модулей. Создаются здесь один раз: модули берут на них ссылки при загрузке, а
 -- lua refresh / lua_openscript не теряет накопленное состояние (таблицы переживают повторный include).
