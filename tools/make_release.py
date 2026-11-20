@@ -23,9 +23,9 @@ GITHUB = os.path.join(ROOT, "release", "github")
 OUT = os.path.join(ROOT, "release", "repo")
 GMA = os.path.join(ROOT, "release", "aether_gas.gma")
 
-ADDON_DIRS = ["lua", "materials", "models", "sound", "resource"]
-TOOLS = ["luacheck51.py", "test_bitmath.py", "test_solver_physics.py", "make_models.py", "make_smoke_vtf.py",
-         "make_release.py", "release_check.py", "make_cover.py"]
+ADDON_DIRS = ["lua", "materials", "models", "sound", "resource", "shaders"]
+TOOLS = ["luacheck51.py", "test_bitmath.py", "test_solver_physics.py", "make_models.py", "texgen.py", "import_glb.py", "build_shaders.py", "preview_style.py", "make_smoke_vtf.py",
+         "make_release.py", "release_check.py", "make_cover.py", "export_props.py", "blender_scene.py"]
 IGNORE = ["*.md", "*.py", "*.yml", "LICENSE", ".git*", ".github/*", "docs/*", "tools/*", "build/*",
           "materialsrc/*", "*.psd", "*.bak", ".vscode/*"]
 
@@ -62,6 +62,7 @@ def main():
     os.makedirs(os.path.join(OUT, "tools"), exist_ok=True)
     for t in TOOLS:
         shutil.copy2(os.path.join(ROOT, "tools", t), os.path.join(OUT, "tools", t))
+    copytree(os.path.join(ROOT, "tools", "shaders"), os.path.join(OUT, "tools", "shaders"))   # исходники HLSL
     files = sum(len(fs) for d, _, fs in os.walk(OUT) if ".git" not in d.split(os.sep))
     print(f"repo: {OUT} ({files} files)")
 

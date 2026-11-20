@@ -297,7 +297,7 @@ AetherGas.SampleBody = SampleBody
 --   «AetherContamGas»): ожог кожи и след газа вокруг, пока агент сам не испарится. Костюм, надетый
 --   после заражения, уже не помогает — агент под ним.
 ---------------------------------------------------------------------------------------------------
-local Body = setmetatable({}, { __mode = "k" })   -- [ent] = { dose = { [gasId] = D }, contam, contamGas }
+local Body = setmetatable({}, { __mode = "k" })   -- [ent] = { dose = { [gasId] = D }, contam, contamGas, treat }
 local CONTAM_RATE  = 0.6     -- доля дозы осаждения, попадающая на кожу без костюма
 local CONTAM_DECAY = 0.004   -- 1/с: само по себе заражение сходит медленно
 local CONTAM_EMIT  = 0.06    -- доля заражения в секунду, испаряющаяся вокруг игрока
@@ -305,7 +305,7 @@ local CONTAM_EMIT  = 0.06    -- доля заражения в секунду, �
 local function BodyState(ent)
     local b = Body[ent]
     if not b then
-        b = { dose = {}, contam = 0, contamGas = 0 }
+        b = { dose = {}, contam = 0, contamGas = 0, treat = {} }
         Body[ent] = b
     end
     return b
@@ -327,6 +327,88 @@ function AetherGas.Decontaminate(ent)
         ent:SetNW2Float("AetherContam", 0)
         ent:SetNW2Int("AetherContamGas", 0)
     end
+end
+
+---------------------------------------------------------------------------------------------------
+-- Антидоты. AetherGas.Antidotes[вид] = {
+--   gases     — имена газов, на которые действует;
+--   remove    — доля накопленной дозы, снимаемая сразу (0..1);
+--   clearance — во сколько раз быстрее выводится доза, пока действует;
+--   harm      — множитель вреда от газа (немедленного и отложенного) и судорог, пока действует;
+--   duration  — сколько секунд действует (атропин заранее — профилактика);
+--   decon     — снять заражение кожи и одежды;
+--   prophylaxis — можно применить без отравления (иначе — «нечего лечить», предмет не тратится) }.
+-- Лечение на сущности: Body.treat[gasId] = { t = до какого времени, clr, harm }.
+-- Сторонние моды: AetherGas.RegisterAntidote(вид, описание); хук AetherGas.Antidote(ent, вид) → false — отменить.
+---------------------------------------------------------------------------------------------------
+AetherGas.Antidotes = AetherGas.Antidotes or {}
+
+function AetherGas.RegisterAntidote(kind, def)
+    def.gases = def.gases or {}
+    def.remove, def.clearance, def.harm = def.remove or 0, def.clearance or 1, def.harm or 1
+    def.duration = def.duration or 0
+    AetherGas.Antidotes[kind] = def
+end
+
+-- атропин (автошприц, как АИ-2): нервно-паралитические — зарин
+AetherGas.RegisterAntidote("atropine", { gases = { "sarin" }, remove = 0.5, clearance = 4, harm = 0.35,
+    duration = 180, prophylaxis = true, sound = "items/medshot4.wav" })
+-- ИПП (индивидуальный противохимический пакет): снимает заражение кожи, иприт и зарин с кожи
+AetherGas.RegisterAntidote("decon", { gases = {}, decon = true, sound = "ambient/water/water_spray1.wav" })
+-- промывка глаз: слезоточивый газ, аммиак
+AetherGas.RegisterAntidote("eyewash", { gases = { "tear_gas", "ammonia" }, remove = 0.8, clearance = 6, harm = 0.3,
+    duration = 30, sound = "ambient/water/water_spray1.wav" })
+-- кислород: угарный газ, углекислота, азот (удушье — гипоксия)
+AetherGas.RegisterAntidote("oxygen", { gases = { "co_smoke", "co2", "nitrogen" }, remove = 0.7, clearance = 5,
+    harm = 0.2, duration = 60, sound = "ambient/gas/steam2.wav" })
+
+--- Применить антидот вида kind к сущности. Возвращает true, если подействовал (предмет тратится).
+function AetherGas.ApplyAntidote(ent, kind)
+    local def = AetherGas.Antidotes[kind]
+    if not def or not IsValid(ent) then return false end
+    if hook.Run("AetherGas.Antidote", ent, kind) == false then return false end
+    local b = BodyState(ent)
+    b.treat = b.treat or {}
+    local helped = false
+    local now = CurTime()
+    for _, name in ipairs(def.gases) do
+        local id = AetherGas.GetGasId(name)
+        if id then
+            local d = b.dose[id]
+            if d and d > 0.002 then
+                b.dose[id] = d * (1 - def.remove)
+                helped = true
+            end
+            if def.duration > 0 and (helped or def.prophylaxis) then
+                b.treat[id] = { t = now + def.duration, clr = def.clearance, harm = def.harm }
+            end
+        end
+    end
+    if def.decon and b.contam > 0.01 then
+        AetherGas.Decontaminate(ent)
+        helped = true
+    end
+    if not helped and not def.prophylaxis then return false end
+    if def.sound then
+        -- Часть звуков HL2 зациклена (steam2, water_spray1): EmitSound играл бы их бесконечно.
+        -- CreateSound + затухание через soundTime (по умолчанию 1.2 с) — конечный звук для любого файла.
+        local snd = CreateSound(ent, def.sound)
+        snd:SetSoundLevel(60)
+        snd:Play()
+        timer.Simple(def.soundTime or 1.2, function() if snd then snd:FadeOut(0.4) end end)
+    end
+    return true
+end
+
+--- Действующее лечение газа g: (множитель выведения, множитель вреда) — 1, 1 без лечения.
+local function Treatment(b, g)
+    local tr = b.treat and b.treat[g]
+    if not tr then return 1, 1 end
+    if CurTime() > tr.t then
+        b.treat[g] = nil
+        return 1, 1
+    end
+    return tr.clr, tr.harm
 end
 
 local function Hurt(ent, amount, dmgType, pos)
@@ -352,7 +434,8 @@ local function ApplyBody(ent, isPlayer, scale)
     if not b then return end
     local bestL, bestG = 0, 0
     for g, d in pairs(b.dose) do
-        d = d * math.exp(-PERIOD / P.Clearance[g])
+        local clr, harm = Treatment(b, g)
+        d = d * math.exp(-PERIOD * clr / P.Clearance[g])
         if d < 0.002 then
             b.dose[g] = nil
         else
@@ -360,7 +443,7 @@ local function ApplyBody(ent, isPlayer, scale)
             local L = d / P.Clearance[g]
             local linger = P.Linger[g]
             if linger > 0 then
-                local dmg = P.Damage[g] * L * linger * PERIOD * scale
+                local dmg = P.Damage[g] * L * linger * PERIOD * scale * harm
                 if dmg > 0 then Hurt(ent, dmg, AetherGas.GasById[g].damageType, ent:EyePos()) end
             end
             if L * linger > bestL then bestL, bestG = L * linger, g end
@@ -440,17 +523,18 @@ local function ApplyExposure(ent, isPlayer, scale)
     local skin = def.maskProtects and def.skinDamage or 0
     local leak = (1 - skin) * (1 - prot) + (suit and 0 or skin)
     if leak <= 0.001 and not passDamage then return end
+    local b = BodyState(ent)
+    local _, harm = Treatment(b, g)   -- антидот снижает вред и судороги, но не вдыхание (доза копится)
 
     -- Судороги (зарин): толчки камеры, сильнее с концентрацией; противогаз их не снимает (кожа)
     local scr = def.screen
-    if isPlayer and scr and scr.shake and random() < scr.shake * math.min(1, c * 6) * leak then
+    if isPlayer and scr and scr.shake and random() < scr.shake * math.min(1, c * 6) * leak * harm then
         ent:ViewPunch(Angle(random(-6, 6), random(-6, 6), random(-4, 4)))
     end
 
     -- Немедленная часть урона; отложенная (linger) идёт от дозы в ApplyBody
-    local dmg = P.Damage[g] * c * PERIOD * scale * (passDamage and 1 or leak) * (passDamage and 1 or (1 - P.Linger[g]))
+    local dmg = P.Damage[g] * c * PERIOD * scale * harm * (passDamage and 1 or leak) * (passDamage and 1 or (1 - P.Linger[g]))
     if dmg > 0 then Hurt(ent, dmg, def.damageType, eye) end
-    local b = BodyState(ent)
     if not passDamage then b.dose[g] = (b.dose[g] or 0) + c * leak * PERIOD end
     -- стойкий агент оседает на коже и одежде (костюм не пускает новое заражение)
     if P.Deposit[g] > 0 and not suit then
@@ -578,7 +662,7 @@ local ADMIN_CVARS = {
     aether_probe_budget = true, aether_grates_block = true, aether_wind_speed = true, aether_wind_yaw = true,
     aether_wind_stormfox = true, aether_damage_scale = true, aether_npc_blind = true,
     aether_mask_filter = true, aether_sync_interval = true,
-    aether_custom_gas_everyone = true, aether_gasgun_toxic_admin = true,
+    aether_custom_gas_everyone = true, aether_gasgun_toxic_admin = true, aether_cylinder_style = true,
     aether_tunnel_strength = true, aether_fire_smoke = true, aether_fire_vfire = true, aether_vfire_wind = true,
 }
 

@@ -10,15 +10,12 @@ ENT.Author    = "Aether"
 ENT.Category  = "Aether Gas"
 ENT.Spawnable = true
 ENT.AdminOnly = false
+ENT.IsBlower  = true   -- скин воздуходувки (aether_fan: UpdateLook)
 
 local STRENGTH, RADIUS = 1400, 120
 
 if CLIENT then return end
 
-function ENT:Initialize()
-    self.BaseClass.Initialize(self)
-    self:SetSkin(1)
-end
 
 function ENT:SetPower(on)
     if on == self:GetOn() then return end

@@ -15,6 +15,14 @@ local RATE   = 3
 
 function ENT:SetupDataTables()
     self:NetworkVar("Bool", 0, "On")
+    self:NetworkVar("Int", 0, "Style")
+end
+
+-- Виды: 1 СССР, 2 НАТО, 4 классика. Скины: классика 0/1, СССР 2/3, НАТО 4/5 (+1 — воздуходувка)
+ENT.LookStyles = { 1, 2, 4 }
+local LOOK_BASE = { [1] = 2, [2] = 4, [4] = 0 }
+function ENT:UpdateLook()
+    self:SetSkin((LOOK_BASE[self:GetStyle()] or 0) + (self.IsBlower and 1 or 0))
 end
 
 if CLIENT then
@@ -40,6 +48,8 @@ function ENT:Initialize()
     self:SetUseType(SIMPLE_USE)
     local phys = self:GetPhysicsObject()
     if IsValid(phys) then phys:Wake() end
+    if self:GetStyle() == 0 then self:SetStyle(AetherGas.PickItemLook(self.LookStyles)) end
+    self:UpdateLook()
 end
 
 function ENT:SetPower(on)

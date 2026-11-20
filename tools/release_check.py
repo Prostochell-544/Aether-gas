@@ -109,6 +109,23 @@ for g in base_gases + ["plain"]:
     if not os.path.exists(os.path.join(icons, f"aether_cylinder_{g}.png")):
         err(f"missing cylinder preset icon aether_cylinder_{g}.png")
 
+# 5b. синтаксис Lua: файл с ошибкой целиком не грузится в игре (так однажды пропал весь газ) — релиз не собирать
+import sys as _sys
+_sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import luacheck51 as _lc
+for _d, _, _fs in os.walk(os.path.join(ADDON, "lua")):
+    for _f in _fs:
+        if _f.endswith(".lua"):
+            _p = os.path.join(_d, _f)
+            try:
+                _issues = _lc.check_file(_p)
+            except _lc.LuaError as _e:
+                err(f"Lua syntax: {os.path.relpath(_p, ADDON)}: {_e}")
+                continue
+            for _i in _issues:
+                if "upvalues" in _i:
+                    err(f"{os.path.relpath(_p, ADDON)}:{_i}")
+
 # 6. addon.json
 meta = json.loads(read(os.path.join(ADDON, "addon.json")))
 TYPES = {"gamemode", "map", "weapon", "vehicle", "npc", "entity", "tool", "effects", "model", "servercontent"}

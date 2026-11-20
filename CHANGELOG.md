@@ -1,5 +1,56 @@
 # Changelog
 
+## 0.12.0 — visual update (2026-11-20)
+
+### Smoke
+- **Ultra smoke (on by default):** clouds are drawn with Aether's own shaders (vs_2_0 + ps_2_b, built from HLSL by `tools/build_shaders.py`). Puffs fade out per pixel where they meet floors and walls, using the frame depth, so there is no hard line where a sprite cuts through geometry. Switched off automatically on graphics cards without DirectX 9 shaders. Q → Utilities → Aether Gas → Ultra smoke, or `aether_ultra 0/1`; `aether_ultra_fade` sets the soft contact width.
+- **Clouds move (Ultra):** puffs slowly billow along a coherent wind-like field, and drift along the gas's own movement: smoke rises from a fire, gas pours through doors and down stairs, still gas stays still. Everything runs on the GPU with no extra mesh rebuilds; `aether_ultra_motion` sets the strength (0 = still).
+- 16 different puffs (was 4) with inner relief and ragged edges, near-continuous rotation — no repeating pattern.
+- Render sub-grid: every cell draws four puffs at sub-grid points with the gas density interpolated from its neighbours, plus random jitter. Cloud edges are smooth and rounded instead of blocky, as if the voxels were half the size, at no simulation cost.
+- Clouds read as volumes: the top of every puff is lit and the bottom darker, gas above a cell shades it (bright on top, dark inside and underneath), cells inside a cloud are darker, and the lit side of dense coloured smoke turns pale (red → pink).
+- Gas lies on the ground: puffs sit right on the floor, cells near the floor get a dense flat puff on the surface, and heavy gases (chlorine, CO2…) are flattened into a low blanket. The real ground under every cell (slopes, displacements) is found with one cached trace.
+- Coloured dynamic light: flares, fire, explosions, flashlights and other addons' dynamic lights tint the smoke.
+- Level of detail: cells deep inside a cloud and distant chunks draw two larger puffs instead of four — about half the translucent overdraw where it cannot be seen.
+
+### Fire smoke
+- Hot smoke near the fire is lighter and greyer and glows orange from the flames below; it darkens to black as it cools and rises.
+- No more flickering at the fire: smoke flows from a steady source above each burning spot instead of a burst every half second.
+
+### Items
+- **Looks for every item**, all procedural, worn and stencilled (Soviet / NATO style):
+  - **Gas cylinders** in five looks: Soviet (GOST 949-73 colours, Cyrillic stencil, chips down to red primer, rust), NATO (US/NATO marking: grey with green bands for agents, red for riot control, olive drab with EN 1089-3 shoulders for supply gases), modern (industrial, GHS label), classic (before 0.12) and unmarked (rusty). Each gas has its own cylinder model with exactly these five skins. Brass valve, red handwheel.
+  - **Gas grenades:** Soviet (olive RDG-style can), NATO (M18-style) and classic.
+  - **Signal flares:** Soviet (kraft cardboard tube, paper bands, stamp), NATO and classic.
+  - **Antidotes:** Soviet and NATO. **Fans, blowers and duct vents:** Soviet, NATO and classic; a duct's exhaust vent takes the look of its intake.
+  - Look of new items: Q → Utilities → Aether Gas → Look of new items (`aether_cylinder_style` 0 random … 5 unmarked). One item: C menu → right-click → Look.
+  - **Look of grenades and flares in hand:** weapons can't be restyled in the C menu, so each player picks it in Q → Utilities → Aether Gas (`aether_look_grenade`, `aether_look_flare`). A thrown grenade or flare keeps the look.
+- **Gas mask is a detailed GP-7** — ["GP7 Gasmask"](https://sketchfab.com/3d-models/gp7-gasmask-844e2d7c0229413281abcf2cf1b99e66) by Shadoff (CC BY 4.0), adapted for Source: normal map, gloss, tinted lens glass, simplified to 21k triangles. The spare filter uses the same GP-7K canister.
+- The worn gas mask fits different player models: scaled to the head hitbox and falls back to the head bone without an "eyes" attachment; size and offset fine-tuning in Q → Utilities → Aether Gas.
+- **Hazmat suit** comes as a Soviet OZK kit: a closed, painted wooden army crate with stencils, steel corners and rope handles.
+- **Gas analyzer** rebuilt as a rugged olive-drab field instrument: screen in a raised bezel, toggles, threshold knob, analog dial, rubber corner guards, sampling probe.
+- **Gas sprayer** is an aerosol can on a pistol grip (like a bear-spray launcher), still tinted in the colour of the selected gas.
+- **Propane tank** in the Soviet household style: red enamel, «ПРОПАН» stencil, brass valve.
+- **Signal flares in the weapons menu:** five flares, one per colour, like the gas grenades. Flares jet smoke from the tip in a narrow cone that widens into billows.
+- Normal maps, Phong highlights and environment reflections masked to bare metal and brass on cylinders, grenades, flares and other items.
+
+### Antidotes (new)
+Spawn menu → Aether Gas, E to use on yourself:
+- **Atropine autoinjector** — sarin: removes half of the dose, clears the rest 4× faster and cuts harm and convulsions to a third for 3 minutes. Can be injected in advance.
+- **Decontamination kit (IPP-8)** — removes skin and clothing contamination (mustard gas, sarin).
+- **Eye wash** — tear gas and ammonia: tears and burning pass quickly.
+- **Oxygen can** — carbon monoxide, CO2, nitrogen: hypoxia eases.
+- Mustard gas has no antidote, as in reality: only the mask, the suit and the decontamination kit help.
+- API: `AetherGas.API.ApplyAntidote(ent, kind)`, `API.RegisterAntidote(kind, def)`; hook `AetherGas.Antidote(ent, kind)` — return false to block.
+
+### Other
+- Download about the same size despite all the new textures (43 → 40 MB): the GP-7 mesh simplified 49k → 21k triangles, screen overlays and the smoke atlas DXT5-compressed, spawn icons 256 px, unused DX8/software model variants dropped.
+- Antidote sounds fade out after about a second (the oxygen and eye-wash sounds used to loop forever).
+- Tools: `tools/export_props.py` and `tools/blender_scene.py` build a Blender showcase of all props and the Workshop cover renders.
+
+## 0.11.1 — several intakes into one exhaust
+
+- **Several intake vents into one exhaust.** With the Gas Duct tool, click an existing exhaust vent as the second point to join it. E on the exhaust switches all its intakes; right-click on an intake disconnects only that one.
+
 ## 0.11.0 — separate hazmat suit, three languages
 
 - **Hazmat suit protects the skin only.** It no longer works as a gas mask (no respirator, no mask overlay). Breathing is protected by a gas mask, the skin by the suit: sarin and mustard gas need both. Damage = inhaled part × (1 − mask) + skin part × (1 − suit). The suit still halves steam burns and stops new contamination.

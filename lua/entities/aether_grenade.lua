@@ -14,6 +14,15 @@ local FUSE = 1.5
 function ENT:SetupDataTables()
     self:NetworkVar("String", 0, "GasName")
     self:NetworkVar("Bool", 0, "Emitting")
+    self:NetworkVar("Int", 0, "Style")
+end
+
+-- Виды (меню C → «Вид»): 1 СССР, 2 НАТО, 4 классика. Скины модели: классика 0..17, СССР 18..35, НАТО 36..53
+-- (порядок газов — AetherGas.GasSkin, make_models.py: model_grenade).
+ENT.LookStyles = { 1, 2, 4 }
+local LOOK_BASE = { [1] = 18, [2] = 36, [4] = 0 }
+function ENT:UpdateLook()
+    self:SetSkin((LOOK_BASE[self:GetStyle()] or 0) + AetherGas.GasSkin(self:GetGasName()))
 end
 
 if CLIENT then return end
@@ -27,7 +36,8 @@ function ENT:Initialize()
     local phys = self:GetPhysicsObject()
     if IsValid(phys) then phys:Wake() end
     if self:GetGasName() == "" then self:SetGasName("smoke") end
-    self:SetSkin(AetherGas.GasSkin(self:GetGasName()))
+    if self:GetStyle() == 0 then self:SetStyle(AetherGas.PickItemLook(self.LookStyles)) end
+    self:UpdateLook()
     self.FuseAt = CurTime() + FUSE
 end
 

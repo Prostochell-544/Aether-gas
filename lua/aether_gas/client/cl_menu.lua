@@ -5,6 +5,10 @@
 local AetherGas = AetherGas
 local C = AetherGas.Const
 
+-- Вид гранат и фаеров в руках (userinfo: сервер читает GetInfoNum в SWEP:Think). 0 — как настройка сервера.
+CreateClientConVar("aether_look_grenade", "0", true, true, "Aether: look of held grenades (0 server, 1 SU, 2 NATO, 4 classic).", 0, 5)
+CreateClientConVar("aether_look_flare", "0", true, true, "Aether: look of held flares (0 server, 1 SU, 2 NATO, 4 classic).", 0, 5)
+
 local function SendServerCVar(name, value)
     -- Ползунок шлёт значение при каждом шаге: отправляем последнее через 0.3 с тишины.
     timer.Create("AetherGas.Menu." .. name, 0.3, 1, function()
@@ -32,6 +36,15 @@ local function ServerCheck(panel, label, name)
     return c
 end
 
+local function ServerCombo(panel, label, name, choices)
+    local c = panel:ComboBox(label)
+    local cv = GetConVar(name)
+    local cur = cv and cv:GetInt() or 0
+    for i = 1, #choices do c:AddChoice(choices[i][1], choices[i][2], choices[i][2] == cur) end
+    c.OnSelect = function(_, _, _, v) SendServerCVar(name, v) end
+    return c
+end
+
 local function BuildPanel(panel)
     local L = AetherGas.L
     panel:ClearControls()
@@ -47,9 +60,26 @@ local function BuildPanel(panel)
     panel:CheckBox(L("menu.effects"), "aether_effects")
     panel:NumSlider(L("menu.draw_distance"), "aether_draw_distance", 500, 30000, 0)
     panel:NumSlider(L("menu.mesh_budget"), "aether_mesh_budget", 0.25, 8, 2)
+    panel:CheckBox(L("menu.ultra"), "aether_ultra")
+    panel:ControlHelp(L("menu.ultra_help"))
+    panel:NumSlider(L("menu.ultra_fade"), "aether_ultra_fade", 1, 200, 0)
+    panel:NumSlider(L("menu.ultra_motion"), "aether_ultra_motion", 0, 3, 2)
+    panel:Help(L("menu.held_look"))
+    for _, it in ipairs({ { "menu.look_grenade", "aether_look_grenade" }, { "menu.look_flare", "aether_look_flare" } }) do
+        local c = panel:ComboBox(L(it[1]), it[2])
+        c:AddChoice(L("style.server"), 0)
+        c:AddChoice(L("style.su"), 1)
+        c:AddChoice(L("style.nato"), 2)
+        c:AddChoice(L("style.classic"), 4)
+    end
+    panel:ControlHelp(L("menu.held_look_help"))
     panel:Button(L("menu.mask_toggle"), "aether_mask_toggle")
     panel:Button(L("menu.mask_drop"), "aether_mask_drop")
     panel:Button(L("menu.suit_drop"), "aether_suit_drop")
+    panel:Help(L("menu.mask_fit"))
+    panel:NumSlider(L("menu.mask_fit_scale"), "aether_mask_fit_scale", 0.5, 2, 2)
+    panel:NumSlider(L("menu.mask_fit_forward"), "aether_mask_fit_forward", -4, 4, 2)
+    panel:NumSlider(L("menu.mask_fit_up"), "aether_mask_fit_up", -4, 4, 2)
     panel:ControlHelp(L("menu.protection"))
 
     panel:Help(L("menu.analyzer"))
@@ -85,6 +115,10 @@ local function BuildPanel(panel)
     ServerCheck(panel, L("menu.vfire_wind"), "aether_vfire_wind")
     ServerCheck(panel, L("menu.custom_everyone"), "aether_custom_gas_everyone")
     ServerCheck(panel, L("menu.toxic_admin"), "aether_gasgun_toxic_admin")
+    ServerCombo(panel, L("menu.cyl_style"), "aether_cylinder_style", {
+        { L("style.random"), 0 }, { L("style.su"), 1 }, { L("style.nato"), 2 }, { L("style.modern"), 3 },
+        { L("style.classic"), 4 }, { L("style.plain"), 5 } })
+    panel:ControlHelp(L("menu.cyl_style_help"))
     panel:Button(L("menu.clear"), "aether_clear")
 end
 

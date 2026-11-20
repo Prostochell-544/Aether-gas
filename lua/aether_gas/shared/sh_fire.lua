@@ -6,7 +6,10 @@
     Раз в FIRE_PERIOD (сервер), не больше MAX_FIRES очагов за проход (по кругу):
       • дым: очаг выпускает co_smoke (дым пожара, 250 °C — поднимается, остыв, заполняет помещение сверху);
         количество — по размеру очага (vFire: состояние 1..7, env_fire: firesize, entityflame: объём родителя)
-        × aether_fire_smoke; выбросы в одном вокселе складываются, всё уходит одним пакетом PuffAt;
+        × aether_fire_smoke; выбросы в одном вокселе складываются. Дым идёт непрерывным источником
+        (Solver.AddSource) в воксель над очагом, а не порциями раз в FIRE_PERIOD: порции давали пульсацию
+        плотности у огня — облако мигало. Источник пересоздаётся, только если сила очагов в вокселе
+        изменилась больше чем на RATE_TOL, и снимается, когда очагов в вокселе не осталось;
       • поджиг: горючий газ в вокселе очага или над ним детонирует (только если горючее было последние 2 с);
       • тушение: инертный газ (extinguishes: CO2, азот) ≥ 0.25 гасит очаг — vFire мягко (SoftExtinguish),
         env_fire входом Extinguish, entityflame — Extinguish родителя.
@@ -83,9 +86,45 @@ local function Extinguish(ent, kind)
     end
 end
 
-local SmokeAmt, SmokeKeys = {}, {}   -- переиспользуемые: ключ вокселя → количество дыма; список ключей
-local PuffPos = Vector(0, 0, 0)
+local SmokeAmt, SmokeKeys = {}, {}   -- переиспользуемые: ключ вокселя → количество дыма за проход; список ключей
+local nKeys = 0                      -- ключей за текущий круг обхода (круг может занять несколько проходов)
+local SrcPos = Vector(0, 0, 0)
 local cursor
+local RATE_TOL = 0.25                -- относительное изменение силы, при котором источник пересоздаётся
+local MAX_RATE = 8                   -- концентрации/с на воксель (раньше: не больше 4 за проход 0.5 с)
+
+-- Источники дыма над очагами: ключ вокселя → id источника солвера и его сила. Переживают hot reload.
+AetherGas.FireSrcId = AetherGas.FireSrcId or {}
+AetherGas.FireSrcRate = AetherGas.FireSrcRate or {}
+local SrcId, SrcRate = AetherGas.FireSrcId, AetherGas.FireSrcRate
+
+local function StopSmoke(k)
+    if Solver.Sources[SrcId[k]] then Solver.StopSource(SrcId[k]) end
+    SrcId[k], SrcRate[k] = nil, nil
+end
+
+--- Конец круга обхода: источники приводятся к накопленным выбросам, накопление обнуляется.
+local function SyncSmoke(smokeId)
+    for i = 1, nKeys do
+        local k = SmokeKeys[i]
+        local rate = math.min(SmokeAmt[k] / FIRE_PERIOD, MAX_RATE)
+        local old = SrcRate[k]
+        -- источник жив (aether_clear снимает все) и сила почти та же — оставляем
+        if not (old and Solver.Sources[SrcId[k]] and math.abs(rate - old) <= old * RATE_TOL) then
+            if SrcId[k] then StopSmoke(k) end
+            SrcPos:SetUnpacked(Spatial.VoxelCenter(k))
+            local id = Solver.AddSource(smokeId, SrcPos, rate, 0, SMOKE_TEMP, SMOKE_RISE)
+            if id then SrcId[k], SrcRate[k] = id, rate end
+        end
+    end
+    for k in pairs(SrcId) do
+        if SmokeAmt[k] == nil then StopSmoke(k) end   -- очагов в вокселе больше нет
+    end
+    for i = 1, nKeys do
+        SmokeAmt[SmokeKeys[i]], SmokeKeys[i] = nil, nil
+    end
+    nKeys = 0
+end
 
 --- Газ у очага: тушение инертным газом (true — очаг потушен) или поджиг горючего.
 local function GasAtFire(ent, kind, key, flammable)
@@ -108,12 +147,19 @@ local function GasAtFire(ent, kind, key, flammable)
 end
 
 timer.Create("AetherGas.Fire.Think", FIRE_PERIOD, 0, function()
-    if not CV.Enabled:GetBool() or next(Fires) == nil then return end
-    local smokeMul = CV.FireSmoke:GetFloat()
     local smokeId = AetherGas.GetGasId("co_smoke")
+    if not CV.Enabled:GetBool() or next(Fires) == nil then
+        if next(SrcId) ~= nil or nKeys > 0 then   -- огня нет (или Aether выключен) — снять весь дым над ним
+            for i = 1, nKeys do SmokeAmt[SmokeKeys[i]], SmokeKeys[i] = nil, nil end
+            nKeys, cursor = 0, nil
+            SyncSmoke(smokeId)
+        end
+        return
+    end
+    local smokeMul = CV.FireSmoke:GetFloat()
     local flammable = CurTime() - (Solver.FlammableSeen or -100) <= 2
     local hasGas = Spatial.Pool.used > 0
-    local nKeys, done = 0, 0
+    local done = 0
 
     -- обход по кругу с курсора: при сотнях очагов каждый всё равно обрабатывается раз в несколько проходов
     if cursor ~= nil and Fires[cursor] == nil then cursor = nil end
@@ -142,16 +188,7 @@ timer.Create("AetherGas.Fire.Think", FIRE_PERIOD, 0, function()
         if ent == nil then cursor = nil end
     end
 
-    if nKeys > 0 then
-        Solver.BeginPuffBatch()
-        for i = 1, nKeys do
-            local k = SmokeKeys[i]
-            local amt = SmokeAmt[k]
-            -- центр вокселя над очагом: соседние языки пламени сливаются в один столб
-            PuffPos:SetUnpacked(Spatial.VoxelCenter(k))
-            Solver.PuffAt(smokeId, PuffPos, math.min(amt, 4), SMOKE_TEMP, SMOKE_RISE, amt > 1.5 and 1 or 0)
-            SmokeAmt[k], SmokeKeys[i] = nil, nil
-        end
-        Solver.EndPuffBatch()
-    end
+    -- круг обхода закончен (все очаги учтены) — источники дыма по накопленному; центр вокселя над очагом:
+    -- соседние языки пламени сливаются в один столб
+    if cursor == nil and smokeId > 0 then SyncSmoke(smokeId) end
 end)

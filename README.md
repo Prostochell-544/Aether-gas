@@ -164,3 +164,7 @@ python -I tools/test_solver_physics.py
 ## License
 
 [CC BY-NC-SA 4.0](LICENSE): free to use and modify with credit, no commercial use. Other addons may call the API and hooks without adopting this license.
+
+### Third-party assets
+
+- Gas mask model and its textures: ["GP7 Gasmask"](https://sketchfab.com/3d-models/gp7-gasmask-844e2d7c0229413281abcf2cf1b99e66) by [Shadoff](https://sketchfab.com/dimas.karmanov), [CC BY 4.0](http://creativecommons.org/licenses/by/4.0/). Changed: axes and scale for Source, ambient occlusion baked into colour, normal map converted to DirectX, gloss from roughness/metalness, new lens glass. These files stay under CC BY 4.0.

@@ -4,7 +4,7 @@
 AetherGas = AetherGas or {}
 local AetherGas = AetherGas
 
-AetherGas.Version = "0.11.0"
+AetherGas.Version = "0.12.0"
 
 -- Пространства имён модулей. Создаются здесь один раз: модули берут на них ссылки при загрузке, а
 -- lua refresh / lua_openscript не теряет накопленное состояние (таблицы переживают повторный include).
@@ -105,6 +105,8 @@ Define("SyncInterval", "aether_sync_interval", "0.5", FL_SHARED,
     "Aether: how often the server sends one chunk snapshot to clients, s.", 0.1, 10)
 Define("CustomEveryone", "aether_custom_gas_everyone", "0", FL_SHARED,
     "Aether: everyone, not only admins, may edit custom gases (0/1).", 0, 1)
+Define("CylinderStyle", "aether_cylinder_style", "0", FL_SHARED,
+    "Aether: look of new gas cylinders: 0 random, 1 Soviet, 2 NATO, 3 modern, 4 classic, 5 unmarked.", 0, 5)
 Define("GunToxicAdmin", "aether_gasgun_toxic_admin", "0", FL_SHARED,
     "Aether: only admins may spray toxic or flammable gases (0/1).", 0, 1)
 Define("TunnelStrength", "aether_tunnel_strength", "0.85", FL_SHARED,
@@ -339,6 +341,43 @@ function AetherGas.GasSkin(name)
     local g = AetherGas.Gases[name]
     if not g or g.id > #AetherGas.BaseGases then return 0 end
     return g.id - 1
+end
+
+-- Вид баллона: 1 — СССР, 2 — НАТО, 3 — современный, 4 — классический (легаси), 5 — без опознавательных
+-- знаков. У каждого базового газа своя модель models/aether/gas_cylinder_<газ>.mdl ровно с пятью скинами
+-- в этом порядке (tools/make_models.py CYL_SKINS): скин = вид − 1, меню «Скин» показывает только их.
+AetherGas.CYLINDER_STYLES = 5
+AetherGas.CYLINDER_PLAIN = 5
+
+--- Вид для нового баллона по ConVar aether_cylinder_style (0 — случайный из СССР / НАТО / современного).
+function AetherGas.PickCylinderStyle()
+    local v = AetherGas.CVar.CylinderStyle and AetherGas.CVar.CylinderStyle:GetInt() or 0
+    if v >= 1 and v <= AetherGas.CYLINDER_STYLES then return v end
+    return math.random(1, 3)
+end
+
+--- Вид предмета (фаер, антидот, вентилятор, решётка): из allowed (список номеров видов 1..5, как у баллонов).
+-- Нет нужного вида — ближайший: современный → НАТО, без знаков → классика, иначе первый из allowed.
+function AetherGas.FitLook(style, allowed)
+    local function has(v)
+        for i = 1, #allowed do if allowed[i] == v then return true end end
+        return false
+    end
+    if has(style) then return style end
+    if style == 3 and has(2) then return 2 end
+    if style == 5 and has(4) then return 4 end
+    return allowed[1]
+end
+
+--- Вид нового предмета по ConVar aether_cylinder_style с подгонкой под доступные виды.
+function AetherGas.PickItemLook(allowed)
+    return AetherGas.FitLook(AetherGas.PickCylinderStyle(), allowed)
+end
+
+--- Модель баллона под газ (сторонние газы — баллон дыма).
+function AetherGas.CylinderModel(gasName)
+    local skin = AetherGas.GasSkin(gasName)
+    return "models/aether/gas_cylinder_" .. AetherGas.BaseGases[skin + 1] .. ".mdl"
 end
 
 --- Относительная плотность газа при температуре tempC (идеальный газ, см. шапку раздела).

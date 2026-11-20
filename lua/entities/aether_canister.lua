@@ -2,6 +2,8 @@
 -- Газовый баллон: «E» открывает/закрывает вентиль, запас конечен. Газ — keyvalue «gas» (в спавн-меню по баллону
 -- на каждый газ), меню C → Gas type / Unmarked (old) look, тулган «Gas Duct / Hose» — шланг.
 -- Keyvalue «plain» 1 — старый баллон без надписей (свой скин, газ внутри любой).
+-- Keyvalue «style» 1..5 — вид (СССР / НАТО / современный / классический / без знаков); без него — по
+-- aether_cylinder_style.
 --
 -- Повреждения (под давлением, вентиль не важен):
 --   • пуля, дробь, арбалетный болт, удар ножом/ломом, сильный удар — пробоина: струя газа наружу по нормали,
@@ -49,6 +51,7 @@ function ENT:KeyValue(key, value)
     key = string.lower(key)
     if key == "gas" and AetherGas.GetGas(value) then self.InitGas = value end
     if key == "plain" then self.InitPlain = tobool(value) end
+    if key == "style" then self.InitStyle = tonumber(value) end
 end
 
 local CAPACITY    = 120   -- единиц концентрации на весь баллон
@@ -74,11 +77,21 @@ function ENT:SetupDataTables()
     self:NetworkVar("Float", 0, "Contents")
     self:NetworkVar("Bool", 1, "Plain")
     self:NetworkVar("Int", 0, "Leaks")
+    self:NetworkVar("Int", 1, "Style")
 end
 
---- Скин: без надписей — отдельный, иначе по газу.
+ENT.LookStyles = { 1, 2, 3, 4, 5 }   -- меню C → «Вид» (sh_properties)
+function ENT:UpdateLook() self:UpdateSkin() end
+
+--- Модель по газу (своя на каждый базовый газ), скин = вид − 1. Физика у всех моделей одинаковая, поэтому
+-- смена модели при смене газа не пересоздаёт физический объект.
 function ENT:UpdateSkin()
-    self:SetSkin(self:GetPlain() and AetherGas.PLAIN_CYLINDER_SKIN or AetherGas.GasSkin(self:GetGasName()))
+    local mdl = AetherGas.CylinderModel(self:GetGasName())
+    if self:GetModel() ~= mdl then self:SetModel(mdl) end
+    local st = math.Clamp(self:GetStyle(), 1, AetherGas.CYLINDER_STYLES)
+    self:SetSkin(st - 1)
+    self.SyncedSkin = st - 1
+    self:SetSubMaterial()        -- сбросить подмену материала из 0.12-dev
 end
 
 if CLIENT then
@@ -124,7 +137,7 @@ if CLIENT then
 end
 
 function ENT:Initialize()
-    self:SetModel("models/aether/gas_cylinder.mdl")
+    self:SetModel(AetherGas.CylinderModel(self:GetGasName() ~= "" and self:GetGasName() or self.InitGas or "chlorine"))
     self:PhysicsInit(SOLID_VPHYSICS)
     self:SetMoveType(MOVETYPE_VPHYSICS)
     self:SetSolid(SOLID_VPHYSICS)
@@ -132,7 +145,12 @@ function ENT:Initialize()
     local phys = self:GetPhysicsObject()
     if IsValid(phys) then phys:Wake() end
     if self:GetGasName() == "" then self:SetGasName(self.InitGas or "chlorine") end
-    if self.InitPlain then self:SetPlain(true) end
+    if self.InitPlain then self.InitStyle = AetherGas.CYLINDER_PLAIN end   -- старый keyvalue plain = вид 5
+    if self:GetPlain() then self:SetPlain(false) self:SetStyle(AetherGas.CYLINDER_PLAIN) end
+    if self:GetStyle() == 0 then
+        local st = self.InitStyle
+        self:SetStyle((st and st >= 1 and st <= AetherGas.CYLINDER_STYLES) and math.floor(st) or AetherGas.PickCylinderStyle())
+    end
     self:UpdateSkin()
     self:SetContents(CAPACITY)
     self.LeakList = {}
@@ -273,6 +291,12 @@ function ENT:Use(activator)
 end
 
 function ENT:Think()
+    -- скин сменили штатным меню «Скин» (C → ПКМ) — запомнить как вид баллона
+    local sk = self:GetSkin()
+    if sk ~= self.SyncedSkin and sk >= 0 and sk < AetherGas.CYLINDER_STYLES then
+        self.SyncedSkin = sk
+        self:SetStyle(sk + 1)
+    end
     local dt = 0.1
     self.LeakList = self.LeakList or {}
     local drain = (self:GetOpen() and (self.Rate or RATE) or 0) + LEAK_RATE * #self.LeakList

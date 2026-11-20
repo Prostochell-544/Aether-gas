@@ -31,13 +31,36 @@ SWEP.Secondary.Ammo        = "none"
 
 local GASES = AetherGas.BaseGases   -- все газы аддона (порядок = скины модели)
 
+-- Вид в руке: 1 СССР, 2 НАТО, 4 классика. Оружие нельзя перекрасить через меню C, поэтому вид задаёт
+-- клиентская настройка игрока SWEP.LookConVar (меню Q → Utilities → Aether Gas; 0 — как aether_cylinder_style).
+-- Брошенный предмет получает вид из руки (SWEP:Throw).
+SWEP.LookStyles = { 1, 2, 4 }
+SWEP.LookConVar = "aether_look_grenade"
+local LOOK_BASE = { [1] = 18, [2] = 36, [4] = 0 }   -- первый скин вида у модели гранаты
+
 function SWEP:SetupDataTables()
     self:NetworkVar("Int", 0, "GasIndex")
+    self:NetworkVar("Int", 1, "Style")
 end
 
 function SWEP:Initialize()
     self:SetHoldType("grenade")
     self:SetGasIndex(1)
+    if SERVER then
+        self.DefaultStyle = AetherGas.PickItemLook(self.LookStyles)
+        self:SetStyle(self.DefaultStyle)
+    end
+end
+
+--- Сервер, раз в 0.5 с: вид по настройке владельца (userinfo-ConVar, без net-сообщений).
+function SWEP:Think()
+    if CLIENT or (self.NextLook or 0) > CurTime() then return end
+    self.NextLook = CurTime() + 0.5
+    local owner = self:GetOwner()
+    if not IsValid(owner) or not owner:IsPlayer() then return end
+    local want = owner:GetInfoNum(self.LookConVar, 0)
+    local st = want > 0 and AetherGas.FitLook(want, self.LookStyles) or self.DefaultStyle
+    if st and st ~= self:GetStyle() then self:SetStyle(st) end
 end
 
 --- Газ гранаты: фиксированный у наследников, выбранный R — у мульти-гранаты.
@@ -47,7 +70,7 @@ function SWEP:CurrentGas()
     local list = self:GasChoices()
     return self.FixedGas or list[self:GetGasIndex()] or list[1]
 end
-function SWEP:HeldSkin() return AetherGas.GasSkin(self:CurrentGas()) end
+function SWEP:HeldSkin() return (LOOK_BASE[self:GetStyle()] or 0) + AetherGas.GasSkin(self:CurrentGas()) end
 -- После броска граната пропадает из руки, через ~0.6 с «достаётся» новая (подъём снизу).
 function SWEP:HeldHidden() return (self.ThrownAt or 0) + 0.6 > CurTime() end
 function SWEP:HeldExtra(ang)
@@ -73,6 +96,7 @@ function SWEP:Throw(speed, upward)
     g:SetPos(owner:EyePos() + aim * 16 + owner:GetRight() * 6)
     g:SetAngles(aim:Angle())
     g:SetGasName(self:CurrentGas())
+    if g.SetStyle then g:SetStyle(self:GetStyle()) end   -- вид из руки
     g:SetOwner(owner)
     g:Spawn()
     local phys = g:GetPhysicsObject()

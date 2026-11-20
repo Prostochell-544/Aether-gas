@@ -77,8 +77,14 @@ function TOOL:LeftClick(tr)
     local first = self.First
     if not IsValid(first) then self:SetStage(0) return false end
     local isHose = first:GetClass() == "aether_canister"
-    local out = Place(isHose and "aether_hose_nozzle" or "aether_vent", tr, ply, function(e)
-        if not isHose then e:SetIsOutlet(true) end
+    -- клик по уже стоящей вытяжной решётке — подключить к ней ещё один впуск (несколько впусков → один выпуск)
+    local hit = tr.Entity
+    local joined = not isHose and IsValid(hit) and hit:GetClass() == "aether_vent" and hit:GetIsOutlet()
+    local out = joined and hit or Place(isHose and "aether_hose_nozzle" or "aether_vent", tr, ply, function(e)
+        if not isHose then
+            e:SetIsOutlet(true)
+            if first.GetStyle then e:SetStyle(first:GetStyle()) end   -- выпуск того же вида, что впуск
+        end
     end)
     if not IsValid(out) then return false end
 
@@ -95,13 +101,13 @@ function TOOL:LeftClick(tr)
         Hint(ply, "tool.duct.hint_hose")
     else
         first:SetLink(out)
-        out.Inlet = first
+        out:AddInlet(first)
         if first:GetOn() then first:SetActive(false) first:SetActive(true) end
         Hint(ply, "tool.duct.hint_duct")
     end
 
     undo.Create("aether_duct")
-        undo.AddEntity(out)
+        if not joined then undo.AddEntity(out) end
         if IsValid(rope) then undo.AddEntity(rope) end
         if self.FirstCreated then undo.AddEntity(first) end
         undo.SetPlayer(ply)
@@ -126,10 +132,19 @@ function TOOL:RightClick(tr)
         ent:Remove()
         return true
     elseif cls == "aether_vent" then
-        local inlet = ent:GetIsOutlet() and ent.Inlet or ent
-        local outlet = ent:GetIsOutlet() and ent or (IsValid(ent:GetLink()) and ent:GetLink())
-        if IsValid(inlet) then inlet:SetActive(false) inlet:SetLink(NULL) end
-        if IsValid(outlet) then outlet:Remove() end
+        if ent:GetIsOutlet() then
+            -- ПКМ по выпуску: отключить все впуски и убрать выпуск
+            local list = ent:GetInlets()
+            for i = 1, #list do list[i]:SetActive(false) list[i]:SetLink(NULL) end
+            ent:Remove()
+            return true
+        end
+        -- ПКМ по впуску: отсоединить только его; выпуск без впусков убирается
+        local outlet = ent:GetLink()
+        ent:SetActive(false)
+        ent:SetLink(NULL)
+        constraint.RemoveConstraints(ent, "Rope")
+        if IsValid(outlet) and #outlet:GetInlets() == 0 then outlet:Remove() end
         return true
     end
     return false

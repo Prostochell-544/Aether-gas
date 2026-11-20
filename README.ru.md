@@ -164,3 +164,7 @@ python -I tools/test_solver_physics.py
 ## Лицензия
 
 [CC BY-NC-SA 4.0](LICENSE): можно пользоваться и изменять с указанием автора, коммерческое использование запрещено. Другие аддоны могут вызывать API и хуки, не перенимая эту лицензию.
+
+### Сторонние ассеты
+
+- Модель противогаза и её текстуры: [«GP7 Gasmask»](https://sketchfab.com/3d-models/gp7-gasmask-844e2d7c0229413281abcf2cf1b99e66), автор [Shadoff](https://sketchfab.com/dimas.karmanov), [CC BY 4.0](http://creativecommons.org/licenses/by/4.0/). Изменено: оси и масштаб под Source, затенение (AO) запечено в цвет, карта нормалей переведена в DirectX, блеск из шероховатости и металличности, новое стекло линз. Эти файлы остаются под CC BY 4.0.

@@ -106,6 +106,10 @@ function API.RegisterMaskProvider(name, fn) AetherGas.RegisterMaskProvider(name,
 --- Накопленная доза газа в организме (эквивалент концентрации) и снятие заражения кожи.
 function API.GetDose(ent, gas) return AetherGas.GetDose and AetherGas.GetDose(ent, gas) or 0 end
 function API.Decontaminate(ent) if AetherGas.Decontaminate then AetherGas.Decontaminate(ent) end end
+--- Применить антидот («atropine», «decon», «eyewash», «oxygen» или свой из RegisterAntidote). true — подействовал.
+function API.ApplyAntidote(ent, kind) return AetherGas.ApplyAntidote and AetherGas.ApplyAntidote(ent, kind) or false end
+--- Свой антидот (сервер): { gases = {…}, remove, clearance, harm, duration, decon, prophylaxis, sound }.
+function API.RegisterAntidote(kind, def) if AetherGas.RegisterAntidote then AetherGas.RegisterAntidote(kind, def) end end
 
 --- Включить/выключить устройство Aether (баллон, эмиттер, вентилятор, решётку).
 function API.SetDeviceOn(ent, on) if AetherGas.SetDeviceOn then AetherGas.SetDeviceOn(ent, on) end end

@@ -475,7 +475,7 @@ FCVAR_ARCHIVE FCVAR_REPLICATED CONTENTS_SOLID CONTENTS_MOVEABLE CONTENTS_WINDOW 
 COLLISION_GROUP_DEBRIS COLLISION_GROUP_DEBRIS_TRIGGER COLLISION_GROUP_INTERACTIVE_DEBRIS COLLISION_GROUP_WEAPON
 MOVETYPE_VPHYSICS DMG_GENERIC DMG_NERVEGAS DMG_DROWN DMG_BURN HUD_PRINTCONSOLE
 MASK_SOLID_BRUSHONLY MATERIAL_QUADS StormFox2 EffectData CreateClientConVar CreateMaterial Mesh mesh render surface EyePos EyeAngles ScrW ScrH
-DMG_BLAST IN_WALK GNarcotics WireLib numpad input DrawMotionBlur MATERIAL_FOG_LINEAR DMG_ACID list HUD_PRINTCENTER FILL LEFT TOP vgui file NOTIFY_GENERIC NOTIFY_HINT chat ErrorNoHalt notification VectorRand tobool CreateVFireBall DynamicLight RENDERGROUP_BOTH DMG_AIRBOAT DMG_BUCKSHOT DMG_BULLET DMG_CLUB DMG_CRUSH DMG_DISSOLVE DMG_ENERGYBEAM DMG_NEVERGIB DMG_PLASMA DMG_SHOCK DMG_SLASH DMG_SLOWBURN DMG_SNIPER MAT_METAL MAT_GRATE MAT_VENT MAT_COMPUTER MAT_CONCRETE MAT_TILE MAT_FLESH MAT_ALIENFLESH MAT_BLOODYFLESH MAT_GLASS
+DMG_BLAST IN_WALK GNarcotics WireLib numpad input DrawMotionBlur MATERIAL_FOG_LINEAR DMG_ACID list HUD_PRINTCENTER FILL LEFT TOP vgui file NOTIFY_GENERIC NOTIFY_HINT HITGROUP_HEAD BLEND_SRC_ALPHA BLEND_ONE_MINUS_SRC_ALPHA BLENDFUNC_ADD Matrix chat ErrorNoHalt notification VectorRand tobool CreateVFireBall DynamicLight RENDERGROUP_BOTH DMG_AIRBOAT DMG_BUCKSHOT DMG_BULLET DMG_CLUB DMG_CRUSH DMG_DISSOLVE DMG_ENERGYBEAM DMG_NEVERGIB DMG_PLASMA DMG_SHOCK DMG_SLASH DMG_SLOWBURN DMG_SNIPER MAT_METAL MAT_GRATE MAT_VENT MAT_COMPUTER MAT_CONCRETE MAT_TILE MAT_FLESH MAT_ALIENFLESH MAT_BLOODYFLESH MAT_GLASS
 ENT SWEP TOOL draw cam LocalPlayer IsFirstTimePredicted SafeRemoveEntityDelayed CreateSound DamageInfo SOLID_VPHYSICS COLLISION_GROUP_WEAPON SIMPLE_USE ACT_VM_THROW ACT_VM_DRAW PLAYER_ATTACK1 undo cleanup language DrawMaterialOverlay DrawColorModify Lerp FrameTime color_black TEXT_ALIGN_CENTER TEXT_ALIGN_RIGHT RunConsoleCommand NULL RealTime Material unpack spawnmenu IN_RELOAD IN_USE killicon ClientsideModel RENDERGROUP_OPAQUE properties gamemode scripted_ents weapons VJBASE_VERSION VJ DrGBase JMod IN_ATTACK constraint TEXT_ALIGN_BOTTOM
 """.split())
 
@@ -495,7 +495,37 @@ def check_file(path):
             issues.append(f"  global WRITE {nm} at lines {sorted(set(lines))}")
     for nm, line in p.locals_info:
         issues.append(f"  unused local {nm} (line {line})")
+    issues += upvalue_issues(src)
     return issues
+
+
+MAX_UPVALUES = 60   # LuaJIT/Lua 5.1: у функции больше 60 upvalue — файл не компилируется («more than 60 upvalues»)
+
+
+def upvalue_issues(src):
+    """Эвристика: для каждой функции верхнего уровня (объявление с начала строки, тело до «end» с начала строки)
+    считаем, сколько локальных переменных уровня файла она использует. Больше MAX_UPVALUES — ошибка загрузки
+    файла в игре (так в cl_mesher.lua пропал весь газ). Комментарии и строки вырезаются грубо."""
+    import re
+    clean = re.sub(r"--\[\[.*?\]\]", "", src, flags=re.S)
+    clean = re.sub(r"--[^\n]*", "", clean)
+    clean = re.sub(r'"(?:\\.|[^"\\])*"|\'(?:\\.|[^\'\\])*\'', '""', clean)
+    out = []
+    for m in re.finditer(r"^(?:local\s+)?function\s+([\w.:]+)\s*\(", clean, re.M):
+        start = m.start()
+        end = clean.find("\nend", m.end())
+        if end < 0:
+            continue
+        head, body = clean[:start], clean[m.end():end]
+        tops = set(re.findall(r"^local\s+function\s+(\w+)", head, re.M))
+        for d in re.findall(r"^local\s+([\w\s,]+?)\s*(?:=|$)", head, re.M):
+            tops.update(n.strip() for n in d.split(",") if n.strip())
+        used = tops & set(re.findall(r"\b[A-Za-z_]\w*\b", body))
+        if len(used) > MAX_UPVALUES:
+            line = src[:start].count("\n") + 1
+            out.append(f"  function {m.group(1)} (line {line}) uses {len(used)} file-level locals as upvalues "
+                       f"(LuaJIT limit {MAX_UPVALUES}): the file will not load")
+    return out
 
 
 if __name__ == "__main__":

@@ -110,6 +110,24 @@ c:SetKeyValue("gas", "ammonia") c:SetPos(pos) c:Spawn()
 c:SetValve(true)
 ```
 
+## Antidotes (server)
+
+```lua
+-- apply an antidote; true — it worked
+AetherGas.API.ApplyAntidote(ply, "atropine")   -- "atropine", "decon", "eyewash", "oxygen"
+-- your own antidote
+AetherGas.API.RegisterAntidote("my_kit", {
+    gases = { "chlorine" },   -- gases it treats
+    remove = 0.5,             -- share of the accumulated dose removed at once
+    clearance = 3,            -- dose leaves the body this many times faster while active
+    harm = 0.5,               -- harm and convulsions multiplier while active
+    duration = 60,            -- seconds
+    decon = false,            -- also remove skin contamination
+    prophylaxis = false,      -- usable with no exposure (otherwise "nothing to treat")
+})
+hook.Add("AetherGas.Antidote", "MyMod", function(ent, kind) end)   -- return false to block
+```
+
 ## Hooks
 
 | Hook | Realm | Arguments → return |

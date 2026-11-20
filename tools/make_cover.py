@@ -2,6 +2,7 @@
 
     python -I tools/make_cover.py            # все варианты → release/workshop/cover_<v>.jpg (1024) + _512
     python -I tools/make_cover.py --variant a
+    python -I tools/make_cover.py --variant d   # d, e, f — на рендерах Blender (tools/blender_scene.py)
 
 Всё генерируется: фон, клубы цветного дыма (fBm-шум, псевдоосвещение по градиенту), модели — тем же
 программным растеризатором, что иконки (make_models.raster_mesh, текстуры из build/models/tex после
@@ -220,7 +221,45 @@ def variant_c():
     return c
 
 
-VARIANTS = {"a": variant_a, "b": variant_b, "c": variant_c}
+# ------------------------------------------------------------------------------------------------
+# Варианты на рендерах Blender (0.12: новые модели). Сначала:
+#   python -I tools/export_props.py
+#   blender -b --factory-startup --python tools/blender_scene.py -- cover_a|cover_b|cover_c --render
+# Рендеры — release/workshop/blender/cover_<x>.png; здесь — затемнение под надпись и логотип.
+# ------------------------------------------------------------------------------------------------
+BLENDER = os.path.join(OUT, "blender")
+
+
+def blender_bg(scene, dark_top=0.0, dark_bottom=0.0):
+    img = Image.open(os.path.join(BLENDER, scene + ".png")).convert("RGB").resize((S, S), Image.LANCZOS)
+    a = np.asarray(img, float)
+    y = np.linspace(0, 1, S)[:, None, None]
+    k = 1 - dark_top * np.clip(1 - y / 0.42, 0, 1) ** 1.6 - dark_bottom * np.clip((y - 0.55) / 0.45, 0, 1) ** 1.4
+    return Image.fromarray(np.uint8(np.clip(a * k, 0, 255))).convert("RGBA")
+
+
+def variant_d():
+    """Противогаз ГП-7 на ящике ОЗК в столбах хлора, сигнального и белого дыма; логотип снизу."""
+    c = blender_bg("cover_a", dark_bottom=0.75)
+    logo(c, 640, accent=(196, 214, 70))
+    return c
+
+
+def variant_e():
+    """Три баллона (СССР, НАТО, современный) с дымом из вентилей; логотип сверху."""
+    c = blender_bg("cover_b", dark_top=0.55)
+    logo(c, 26, accent=(220, 58, 46), title_size=190)
+    return c
+
+
+def variant_f():
+    """Горящие фаеры, граната НАТО, анализатор и противогаз на полу, цветной дым; логотип сверху."""
+    c = blender_bg("cover_c", dark_top=0.6)
+    logo(c, 26, accent=(140, 200, 255), title_size=190)
+    return c
+
+
+VARIANTS = {"a": variant_a, "b": variant_b, "c": variant_c, "d": variant_d, "e": variant_e, "f": variant_f}
 
 
 def main():

@@ -9,8 +9,10 @@ local function Allowed(self, ent, ply)
     return gamemode.Call("CanProperty", ply, self.InternalName, ent) ~= false
 end
 
+local L = AetherGas.L
+
 properties.Add("aether_gas_type", {
-    MenuLabel = "Gas type",
+    MenuLabel = L("prop.gas_type"),
     Order = 1600,
     MenuIcon = "icon16/weather_clouds.png",
 
@@ -24,7 +26,7 @@ properties.Add("aether_gas_type", {
         local sub = option:AddSubMenu()
         for id = 1, AetherGas.GasCount do
             local def = AetherGas.GasById[id]
-            local o = sub:AddOption(def.printName, function() self:SetGas(ent, def.name) end)
+            local o = sub:AddOption(AetherGas.GasName(def), function() self:SetGas(ent, def.name) end)
             if ent.GetGasName and ent:GetGasName() == def.name then o:SetChecked(true) end
         end
     end,
@@ -53,34 +55,43 @@ properties.Add("aether_gas_type", {
     end,
 })
 
--- Баллон: старый вид без надписей (машинима, сцены) ↔ маркировка газа
-properties.Add("aether_plain", {
-    MenuLabel = "Unmarked (old) look",
-    Order = 1602,
-    Type = "toggle",
+-- Вид предмета (баллоны, фаеры, антидоты, вентиляторы, решётки): только виды из ENT.LookStyles
+local STYLE_KEYS = { "style.su", "style.nato", "style.modern", "style.classic", "style.plain" }
+properties.Add("aether_cylinder_style", {
+    MenuLabel = L("prop.style"),
+    Order = 1603,
+    MenuIcon = "icon16/paintcan.png",
 
     Filter = function(self, ent, ply)
-        return IsValid(ent) and ent:GetClass() == "aether_canister" and Allowed(self, ent, ply)
+        return IsValid(ent) and ent.LookStyles ~= nil and ent.GetStyle ~= nil and Allowed(self, ent, ply)
     end,
 
-    Checked = function(_, ent) return ent.GetPlain and ent:GetPlain() end,
-
-    Action = function(self, ent)
-        self:MsgStart()
-            net.WriteEntity(ent)
-        self:MsgEnd()
+    MenuOpen = function(self, option, ent)
+        local sub = option:AddSubMenu()
+        for _, i in ipairs(ent.LookStyles) do
+            local o = sub:AddOption(L(STYLE_KEYS[i]), function()
+                self:MsgStart()
+                    net.WriteEntity(ent)
+                    net.WriteUInt(i, 3)
+                self:MsgEnd()
+            end)
+            if ent.GetStyle and ent:GetStyle() == i then o:SetChecked(true) end
+        end
     end,
+
+    Action = function() end,
 
     Receive = function(self, _, ply)
-        local ent = net.ReadEntity()
+        local ent, st = net.ReadEntity(), net.ReadUInt(3)
         if not properties.CanBeTargeted(ent, ply) or not self:Filter(ent, ply) then return end
-        ent:SetPlain(not ent:GetPlain())
-        ent:UpdateSkin()
+        if AetherGas.FitLook(st, ent.LookStyles) ~= st then return end
+        ent:SetStyle(st)
+        ent:UpdateLook()
     end,
 })
 
 properties.Add("aether_toggle", {
-    MenuLabel = "Turn on / off",
+    MenuLabel = L("prop.toggle"),
     Order = 1601,
     MenuIcon = "icon16/control_power.png",
 

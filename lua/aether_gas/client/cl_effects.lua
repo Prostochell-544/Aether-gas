@@ -254,26 +254,70 @@ if not killicon.Exists("entityflame") then
 end
 
 ---------------------------------------------------------------------------------------------------
--- Противогаз на других игроках (и на себе в третьем лице): модель у аттачмента «eyes».
--- Модель (ГП-7): центры линз на высоте 0 и ~1.2 впереди начала координат — оно совпадает с глазами.
+-- Противогаз на других игроках (и на себе в третьем лице): модель у аттачмента «eyes» (нет его — у кости
+-- головы). Модель (ГП-7): центры линз на высоте 0 и ~1.2 впереди начала координат — оно совпадает с глазами.
+-- Подгонка под голову: масштаб = размер хитбокса головы модели / размер у эталонного горожанина
+-- (male_07), кэш на модель. Ручная доводка — ConVar'ы aether_mask_fit_* (меню Q).
 ---------------------------------------------------------------------------------------------------
 local maskModel
+local cvFitScale = CreateClientConVar("aether_mask_fit_scale", "1", true, false, "Aether: worn gas mask size multiplier.", 0.5, 2)
+local cvFitFwd = CreateClientConVar("aether_mask_fit_forward", "0", true, false, "Aether: worn gas mask forward offset.", -4, 4)
+local cvFitUp = CreateClientConVar("aether_mask_fit_up", "0", true, false, "Aether: worn gas mask up offset.", -4, 4)
+local REF_MODEL = "models/player/group01/male_07.mdl"
+local refHead            -- размер головы эталона (nil — ещё не измерен, false — не удалось)
+local fitScale = {}      -- [модель игрока] = масштаб маски
+
+local function HeadSize(ent)
+    local set = 0
+    for i = 0, (ent:GetHitBoxCount(set) or 0) - 1 do
+        if ent:GetHitBoxHitGroup(i, set) == HITGROUP_HEAD then
+            local mins, maxs = ent:GetHitBoxBounds(i, set)
+            if mins then return ((maxs.x - mins.x) + (maxs.y - mins.y) + (maxs.z - mins.z)) / 3 end
+        end
+    end
+end
+
+local function MaskScale(ply)
+    local mdl = ply:GetModel()
+    local s = fitScale[mdl]
+    if s then return s end
+    if refHead == nil then
+        local ref = ClientsideModel(REF_MODEL, RENDERGROUP_OPAQUE)
+        refHead = IsValid(ref) and HeadSize(ref) or false
+        if IsValid(ref) then ref:Remove() end
+    end
+    local hs = HeadSize(ply)
+    s = (refHead and hs) and math.Clamp(hs / refHead, 0.75, 1.4) or 1
+    fitScale[mdl] = s
+    return s
+end
+
+local HEAD_OFFSET = Vector(3.5, -4.2, 0)   -- от кости головы ValveBiped к глазам (для моделей без «eyes»)
 hook.Add("PostPlayerDraw", "AetherGas.Effects.MaskModel", function(ply)
     if not ply:GetNW2Bool("AetherMask", false) or not ply:Alive() then return end
+    local pos, ang
     local att = ply:LookupAttachment("eyes")
-    if not att or att <= 0 then return end
-    local a = ply:GetAttachment(att)
-    if not a then return end
+    local a = att and att > 0 and ply:GetAttachment(att)
+    if a then
+        pos, ang = a.Pos, a.Ang
+    else
+        local bone = ply:LookupBone("ValveBiped.Bip01_Head1")
+        local mtx = bone and ply:GetBoneMatrix(bone)
+        if not mtx then return end
+        local ba = mtx:GetAngles()
+        pos = mtx:GetTranslation() + ba:Forward() * HEAD_OFFSET.x + ba:Right() * HEAD_OFFSET.y + ba:Up() * HEAD_OFFSET.z
+        ang = ply:EyeAngles()
+    end
     if not IsValid(maskModel) then
         maskModel = ClientsideModel("models/aether/gasmask.mdl", RENDERGROUP_OPAQUE)
         if not IsValid(maskModel) then return end
         maskModel:SetNoDraw(true)
     end
-    local ang = a.Ang
-    local pos = a.Pos - ang:Forward() * 0.3
+    local s = MaskScale(ply) * cvFitScale:GetFloat()
+    pos = pos + ang:Forward() * (cvFitFwd:GetFloat() - 0.3 * s) + ang:Up() * cvFitUp:GetFloat()
     maskModel:SetPos(pos)
     maskModel:SetAngles(ang)
-    maskModel:SetModelScale(1)
+    maskModel:SetModelScale(s)
     maskModel:SetupBones()
     maskModel:DrawModel()
 end)

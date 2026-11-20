@@ -1,6 +1,12 @@
 "VertexLitGeneric"
 {
 	"$basetexture" "models/aether/flare_signal_green"
+	"$bumpmap" "models/aether/flare_n"
+	"$phong" "1"
+	"$phongexponent" "18"
+	"$phongboost" "1.6"
+	"$phongfresnelranges" "[0.35 0.7 1]"
 	"$envmap" "env_cubemap"
-	"$envmaptint" "[.06 .06 .06]"
+	"$normalmapalphaenvmapmask" "1"
+	"$envmaptint" "[0.22 0.22 0.22]"
 }

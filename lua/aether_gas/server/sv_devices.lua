@@ -36,12 +36,8 @@ function AetherGas.SetDeviceOn(ent, on)
     if ent.SetValve then ent:SetValve(on)
     elseif ent.SetPower then ent:SetPower(on)
     elseif ent.SetActive then
-        -- выпуск воздуховода управляет своим впуском
-        if ent:GetClass() == "aether_vent" and ent.GetIsOutlet and ent:GetIsOutlet() then
-            if IsValid(ent.Inlet) then ent.Inlet:SetActive(on) end
-        else
-            ent:SetActive(on)
-        end
+        -- выпуск воздуховода управляет всеми своими впусками
+        if ent.SetAllActive then ent:SetAllActive(on) else ent:SetActive(on) end
     end
 end
 

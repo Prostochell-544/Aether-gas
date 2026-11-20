@@ -9,6 +9,9 @@ import math
 import os
 import random
 import struct
+import sys
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 _REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 # клон репозитория (addon.json рядом с tools/) — пишем в него; иначе — в живой аддон в GMod
@@ -124,3 +127,96 @@ if __name__ == "__main__":
         fh.write(VMT)
     size = os.path.getsize(os.path.join(out_dir, "smoke_puff.vtf"))
     print(f"smoke_puff.vtf: {SIZE}x{SIZE}, mips={n}, {size} bytes")
+
+
+# --- Атлас 4×4 для облаков (cl_mesher): 16 разных клубов 128×128, numpy ---------------------------------
+def build_atlas16(size=512, seed=101):
+    """Клуб = сумма 4–7 мягких «бугров» со смещениями (кучевая форма, не круг) × рваный край по fbm.
+    Яркость — нейтральная: светлые выпуклости, темнее во впадинах между буграми (рельеф без направления;
+    направление света задаёт меш: верх спрайта светлее, низ темнее — cl_mesher)."""
+    import numpy as np
+    cell = size // 4
+    rnd = np.random.default_rng(seed)
+    yy, xx = (np.mgrid[0:cell, 0:cell] + 0.5) / cell
+
+    def fbm(n_oct, base):
+        out = np.zeros((cell, cell))
+        amp, tot = 1.0, 0.0
+        for o in range(n_oct):
+            f = base * 2 ** o
+            g = rnd.random((f + 3, f + 3))
+            xi, yi = xx * f, yy * f
+            x0, y0 = xi.astype(int), yi.astype(int)
+            fx, fy = xi - x0, yi - y0
+            fx, fy = fx * fx * (3 - 2 * fx), fy * fy * (3 - 2 * fy)
+            a = g[y0, x0] + (g[y0, x0 + 1] - g[y0, x0]) * fx
+            b = g[y0 + 1, x0] + (g[y0 + 1, x0 + 1] - g[y0 + 1, x0]) * fx
+            out += (a + (b - a) * fy) * amp
+            tot += amp
+            amp *= 0.5
+        return out / tot
+
+    img = np.zeros((size, size, 4))
+    for q in range(16):
+        # охват как у старого атласа (видимая часть до ~0.42 ячейки от центра): соседние спрайты перекрываются
+        rr = np.sqrt((xx - 0.5) ** 2 + (yy - 0.5) ** 2) / 0.44
+        body = np.clip(1 - rr * rr, 0, 1) ** 1.1                 # плотное тело всего клуба
+        bumps = np.zeros((cell, cell))
+        for _ in range(rnd.integers(7, 12)):           # бугры по краю и внутри — кучевой силуэт и рельеф
+            ang, dist = rnd.uniform(0, 2 * np.pi), rnd.uniform(0.05, 0.3)
+            cx, cy = 0.5 + np.cos(ang) * dist, 0.5 + np.sin(ang) * dist * 0.85
+            r = rnd.uniform(0.1, 0.17)
+            bumps = np.maximum(bumps, np.exp(-((xx - cx) ** 2 + (yy - cy) ** 2) / (2 * r * r)) * rnd.uniform(0.6, 1.0))
+        n, n2 = fbm(5, 3), fbm(4, 7)
+        dens = np.clip(np.maximum(body, bumps * 0.9) * (0.7 + 0.6 * n) - 0.1, 0, 1) / 0.9    # рваный край
+        edge = np.clip(np.minimum.reduce([xx, yy, 1 - xx, 1 - yy]) / 0.08, 0, 1) ** 2
+        alpha = np.clip(dens * 1.7, 0, 1) ** 1.1 * (0.85 + 0.15 * n2) * edge
+        # рельеф без направления света: вершины бугров светлее, стыки между ними темнее
+        lum = 0.7 + 0.3 * np.clip(bumps, 0, 1) ** 0.8 + 0.08 * (n2 - 0.5)
+        ox, oy = (q % 4) * cell, (q // 4) * cell
+        img[oy:oy + cell, ox:ox + cell, 0:3] = np.clip(lum, 0, 1)[..., None] * 255
+        img[oy:oy + cell, ox:ox + cell, 3] = alpha * 255
+    return img.astype(np.uint8)
+
+
+def write_vtf_np(path, arr):
+    """BGRA8888 VTF 7.2 с mip-цепочкой (усреднение 2×2, альфа-взвешенный цвет — без тёмной каймы)."""
+    import numpy as np
+    size = arr.shape[0]
+    mips = [arr.astype(float)]
+    while mips[-1].shape[0] > 1:
+        m = mips[-1]
+        a = m[..., 3:4]
+        prem = np.concatenate([m[..., :3] * a, a], -1)
+        prem = (prem[0::2, 0::2] + prem[1::2, 0::2] + prem[0::2, 1::2] + prem[1::2, 1::2]) / 4
+        al = prem[..., 3:4]
+        rgb = np.where(al > 0, prem[..., :3] / np.maximum(al, 1e-6), 255)
+        mips.append(np.concatenate([rgb, al], -1))
+    flags = 0x4 | 0x8 | 0x2000
+    header = struct.pack("<4s2IIHHIHH4x3f4xfIBiBBH", b"VTF\0", 7, 2, 80, size, size, flags, 1, 0,
+                         1.0, 1.0, 1.0, 1.0, 12, len(mips), -1, 0, 0, 1)
+    header += b"\0" * (80 - len(header))
+    data = b"".join(np.clip(m, 0, 255).astype(np.uint8)[..., [2, 1, 0, 3]].tobytes() for m in reversed(mips))
+    with open(path, "wb") as fh:
+        fh.write(header + data)
+
+
+def main16():
+    out_dir = os.path.join(ADDON, "materials", "aether")
+    os.makedirs(out_dir, exist_ok=True)
+    arr = build_atlas16()
+    try:   # DXT5 через vtex из GMod (в 4 раза меньше); без vtex — несжатый BGRA
+        import make_models as MM
+        from PIL import Image
+        MM.write_vtf_dxt("smoke_puff4", Image.fromarray(arr, "RGBA"))
+    except Exception as e:   # noqa: BLE001 — запасной путь сборки
+        print("vtex unavailable, writing uncompressed:", e)
+        write_vtf_np(os.path.join(out_dir, "smoke_puff4.vtf"), arr)
+    with open(os.path.join(out_dir, "smoke_puff4.vmt"), "w", encoding="ascii", newline="\n") as fh:
+        fh.write(VMT.replace("aether/smoke_puff", "aether/smoke_puff4"))
+    return arr
+
+
+if __name__ == "__main__":
+    a16 = main16()
+    print("smoke_puff4.vtf: 512x512 (4x4)")
